@@ -1,0 +1,33 @@
+id = "herdr-utils"
+name = "Herdr Utils"
+version = "0.1.0"
+# `herdr api snapshot`, the session read this plugin's client wraps, first
+# shipped in herdr 0.7.2 (src/cli/api.rs gained the snapshot subcommand there;
+# 0.7.1 has no api dispatch). Plugin actions and the `herdr plugin list --json`
+# actions array arrived in 0.7.0, so 0.7.5 covers every surface this plugin uses.
+min_herdr_version = "0.7.5"
+description = "Small, toggleable herdr utilities: a keybinding guide and a catalog of recommended plugins"
+platforms = ["linux", "macos"]
+
+# The [[build]] hook provisions bin/hu on every install and update: it builds
+# with a local Go toolchain and falls back to the prebuilt hu-<os>-<arch>
+# release binary verified against the tag (the herdr-suite pattern). A working
+# tree built with `herdr plugin link` runs no build, so it uses "make hu".
+[[build]]
+command = ["bash", "bin/ensure-binary.sh", "--in-tree"]
+
+# Every tool is default off, so this hook does nothing but mention the container
+# once per server socket until the user opts in. The hint is recorded in the
+# plugin state directory, one entry per socket, and the hook never blocks a
+# herdr start.
+[[startup]]
+command = ["bin/hu", "startup"]
+
+# The single user-facing surface in v0.1.0: the keybinding guide. The plugin
+# declares the action, the user binds a key (docs/which.md suggests prefix+w).
+[[actions]]
+id = "which"
+title = "Open the keybinding guide"
+description = "Open the keybinding guide for herdr; the tool is default off, so set tools.which = true first"
+contexts = ["global"]
+command = ["bin/hu", "which"]

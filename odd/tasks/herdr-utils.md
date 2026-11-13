@@ -1,0 +1,87 @@
+# herdr-utils — a container of small herdr utilities
+
+Go plugin container for [herdr](https://herdr.dev): small, feature-toggled
+utilities that are useful to many but too small to be their own plugin, plus a
+curated catalog of recommended herdr plugins and a machine inventory that
+installs them. Command: `hu`. Sibling of
+[herdr-suite](https://github.com/WilberC/herdr-suite).
+
+## Specs
+
+- S1 (T1): Repo setup mirrors herdr-suite's standard ("Hagamos una buena config
+  de la repo como se hizo con hs ... recuerda poner el agents.md, y todo"):
+  AGENTS.md, docs/ topic split, README product landing (≤160 lines), LICENSE
+  (MIT), CHANGELOG, CONTRIBUTING, SECURITY, issue templates, CODEOWNERS,
+  .gitattributes/.editorconfig, CI + release workflows with the smoke job, and
+  the offline-test rule (herdrmock pattern; tests never touch a socket).
+- S2 (T1-T3): User: "es importante que en utils todas las herramientas tengan
+  prendido y apagado porque no siempre van a querer usar todo" — every tool in
+  the container is toggleable via the plugin config (`config.json`, per-tool
+  keys), and tools default OFF unless the user says otherwise. The container
+  itself declares one `[[startup]]` gate like herdr-suite's gs-restore.
+- S3 (T2): User: "es importante que estos plugins que vamos agregando se
+  mencionen en utils para que puedan instalarlos directamente" — a declarative
+  catalog (`plugins.toml` in the repo, listing recommended external plugins
+  with owner/repo + one-line reason) renders the README "Recommended plugins"
+  section (generated, never hand-edited), and `hu plugins sync` installs the
+  missing ones on this machine via `herdr plugin install` (idempotent, `--json`
+  report, `--dry-run`). `hu plugins list` shows installed-vs-catalog state.
+- S4 (T3, S18-style): User on hu which: "a mi en realidad lo unico que me
+  importa son los key bindings ... sera mejor hacer uno nuestro en go? ...
+  incluso podria ir en -utils quiza?" — approved: `hu which`, a keybinding
+  guide built in Go with Bubbletea, inspired by herdr-pretty-which's interface
+  (user: "la distribucion y el como se ve esta genial ... la interfaz de
+  inspiracion") but reimplemented minimal: NO herdr-internal defaults, NO
+  launcher (herdr-bar owns it), NO shell mode, NO theming engine.
+- S5 (T3): Sources architecture — the guide renders SOURCES, each source
+  declares entries (binding, description, how-to-run): `HS` (hs actions via
+  `herdr plugin action list` + keybindings read from the user's herdr
+  config.toml), `GENTLE` (gentle-shell commands; v1 reads what gentle exposes,
+  fallback to manual entries in config), `CUSTOM` (user TOML entries),
+  `DISCOVERED` (live plugin actions from installed plugins). Each source is
+  toggleable: `which.sources = {hs, gentle, custom, discovered}` and the tool
+  itself via `tools.which` — per S2's everything-toggles rule.
+- S6 (T3): Interface contract (from the pretty-which screenshot the user
+  approved): grouped multi-column layout with a count per group, live filter,
+  footer hints row, KEYS/LIST views. Bubbletea; ANSI terminal colors (no theming
+  engine). Popup pane declared in the manifest.
+- S7 (T4): User: "recuerda que hu which tambien necesita un shortcut probablemente
+  para no solo abrirlo por comando" — the manifest declares the `which` global
+  action so the user binds a key (suggested: `prefix+w`), and the docs say so.
+- S8 (T5): Release discipline of herdr-suite: tag `v*` → cross-built binaries +
+  SHA256SUMS → smoke job. Version bumps in the manifest; tags are the owner's
+  decision.
+
+## Tasks
+
+| ID | S# | Route | Commit | Task |
+| --- | --- | --- | --- | --- |
+| T1 | S1,S2 | w1 | chore(repo) | Scaffold: go.mod, cmd/hu, internal/{config,tools}, internal/herdrmock reuse pattern, herdr-plugin.toml (which action + startup gate), AGENTS.md, docs/ split, hygiene files, README landing + banner (Krea), Makefile, .gitignore, offline test harness. |
+| T2 | S3 | w2 | feat(catalog) | plugins.toml catalog + generated README section + `hu plugins list/sync [--dry-run|--json]` with herdrmock-faked installs. |
+| T3 | S4,S5,S6 | w3 | feat(which) | `hu which`: sources (hs/gentle/custom/discovered), toggles, Bubbletea grouped-column guide with filter and views. |
+| T4 | S7 | parent | docs+config | Keybinding suggestion documented; binding added to the owner's dotfiles herdr config (prefix+w). |
+| T5 | S8 | parent | release | Tag v0.1.0 after the owner confirms; release runs the smoke job. |
+
+## Log
+
+- L1 (2026-11-13): User approved building herdr-utils with this scope:
+  "genial! Hagamos una buena config de la repo como se hiso con hs y luego suma
+  la implementacion de esto (recuerda poner el agents.md, y todo) puedes usar
+  krea mcp para imagenes que necesites y recuerda que hu which tambien necesita
+  un shortcut probablemente para no solo abrirlo por comando".
+- L2 (2026-11-13): Catalog and machine-inventory decision originated earlier
+  ("es importante que estos plugins que vamos agregando se mencionen en utils
+  para que puedan instalarlos directamente") and the everything-toggles rule
+  ("es importante que en utils todas las herramientas tengan prendido y apagado
+  porque no siempre van a querer usar todo").
+- L3 (2026-11-13): hu which scope refined across the pretty-which discussion:
+  keybindings-only ("lo unico que me importa son los key bindings"), own Go
+  implementation over the Rust beta ("el costo de rust es fuerte"), sources
+  architecture with built-ins hs + gentle-shell and expandable customs ("que
+  tambien se pueda expandir cosa que podemos poner customs, y por defecto
+  quisiera soportar gentle-shell commands y tambien los de hs"), and the
+  everything-toggles rule restated for which's sources.
+- L4 (2026-11-13): Interface inspiration registered from the user's approved
+  screenshot: grouped multi-column layout with per-group counts, live filter,
+  footer hints, KEYS/LIST views; in hu which the groups are the sources (HS,
+  GENTLE, CUSTOM, DISCOVERED).

@@ -1,0 +1,26 @@
+name: Feature request
+description: A utility or a source herdr-utils does not have yet
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can you not do today, and what do you do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The proposal
+      description: The command, flag or behavior as you would expect to use it.
+    validations:
+      required: true
+  - type: checkboxes
+    id: default-off
+    attributes:
+      label: Scope
+      description: Every tool in this container is default off and toggleable. Are you describing a new tool or a new setting of an existing one?
+      options:
+        - label: This could ship as a new tool behind its own config toggle
+        - label: This fits an existing tool and its toggles

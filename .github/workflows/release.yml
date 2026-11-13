@@ -1,0 +1,114 @@
+# Publishes what a herdr install consumes: one static binary per target plus a
+# SHA256SUMS file that names each of them. Nothing here needs a release tool:
+# the Go toolchain, sha256sum and the gh CLI shipped on the runner are enough.
+#
+# After publishing, the smoke job downloads the linux asset back from the
+# release, verifies it against SHA256SUMS and runs it, so a release that
+# published a broken or mis-stamped binary fails here instead of at an install.
+#
+# Assets are named hu-<os>-<arch>, where <os> and <arch> are the Go GOOS and
+# GOARCH values the matrix builds. cmd/hu/release_workflow_test.go asserts this
+# matrix and the platforms in herdr-plugin.toml agree, so a target added here
+# without a matching platform fails the test suite.
+#
+# The build stamps the tag into the binary as -X main.version, so a published
+# binary reports its own release: `hu version` prints it and
+# `hu version --check` compares it with the manifest. A local build keeps the
+# dev default.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -count=1 ./...
+      - name: Gofmt check
+        run: |
+          unformatted="$(gofmt -l cmd internal)"
+          if [[ -n "$unformatted" ]]; then
+            echo "these files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [linux, darwin]
+        arch: [amd64, arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build hu-${GOOS}-${GOARCH}
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags "-X main.version=${GITHUB_REF_NAME#v}" -o "dist/hu-${GOOS}-${GOARCH}" ./cmd/hu
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hu-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/hu-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write SHA256SUMS
+        run: |
+          cd dist
+          sha256sum hu-* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/hu-* dist/SHA256SUMS \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
+
+  smoke:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Download the published asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --pattern "hu-linux-amd64" --pattern "SHA256SUMS"
+      - name: Verify the downloaded asset against SHA256SUMS
+        run: sha256sum --check --ignore-missing SHA256SUMS
+      - name: Run the published binary
+        run: |
+          chmod +x hu-linux-amd64
+          ./hu-linux-amd64 version --check
+          ./hu-linux-amd64 --help
