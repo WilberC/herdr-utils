@@ -96,16 +96,16 @@ func TestRunContract(t *testing.T) {
 			wantStdout: []string{"usage: hu"},
 		},
 		{
-			name:       "bare which prints its usage on stderr",
+			name:       "bare which refuses while the tool is off",
 			args:       []string{"which"},
 			wantExit:   2,
-			wantStderr: []string{"usage: hu which", "tools.which"},
+			wantStderr: []string{"tools.which", "config.json"},
 		},
 		{
 			name:       "which help prints its usage on stdout",
 			args:       []string{"which", "--help"},
 			wantExit:   0,
-			wantStdout: []string{"usage: hu which", "which.sources"},
+			wantStdout: []string{"usage: hu which", "which.sources", "ctrl+t", "herdr/config.toml"},
 		},
 		{
 			name:       "which rejects an argument",

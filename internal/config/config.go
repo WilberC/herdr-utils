@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // The tools this container ships. A tool's name is its key under "tools".
@@ -41,20 +42,50 @@ func Tools() []string { return append([]string(nil), toolNames...) }
 // Sources returns the which source names this build knows, in catalog order.
 func Sources() []string { return append([]string(nil), sourceNames...) }
 
+// The views the guide can draw. The mode is saved under "which.view".
+const (
+	ViewKeys = "keys"
+	ViewList = "list"
+)
+
+// Entry is one manual which entry, the way the user writes it under
+// "which.gentle" or "which.custom": the binding, what it does, and the command
+// the guide reports for it. The guide never runs it.
+type Entry struct {
+	Key         string
+	Description string
+	Command     string
+}
+
+// NormalizeView maps a saved view to the one the guide draws: the documented
+// list view, and the keys view for anything else, so a view written by a newer
+// build still opens a screen.
+func NormalizeView(view string) string {
+	if strings.ToLower(strings.TrimSpace(view)) == ViewList {
+		return ViewList
+	}
+	return ViewKeys
+}
+
 // Config is the documented part of the config file.
 type Config struct {
 	Tools map[string]bool
 	Which Which
 }
 
-// Which holds the toggles of the keybinding guide.
+// Which holds the settings of the keybinding guide: one toggle per source, the
+// manual entries the user maintains, and the view the guide last drew.
 type Which struct {
 	Sources map[string]bool
+	Gentle  []Entry
+	Custom  []Entry
+	View    string
 }
 
-// Default is the config a missing file means: every tool off, every source off.
+// Default is the config a missing file means: every tool off, every source off,
+// no manual entries, and the keys view.
 func Default() Config {
-	return Config{Tools: toggles(toolNames), Which: Which{Sources: toggles(sourceNames)}}
+	return Config{Tools: toggles(toolNames), Which: Which{Sources: toggles(sourceNames), View: ViewKeys}}
 }
 
 func toggles(names []string) map[string]bool {
@@ -150,23 +181,73 @@ func parseConfig(data []byte, path string) (Document, error) {
 	if err := json.Unmarshal(raw, &document.which); err != nil {
 		return Document{}, fmt.Errorf("parse %s: which must be a JSON object: %w", path, err)
 	}
-	raw, ok = document.which["sources"]
-	if !ok {
-		return document, nil
-	}
-	if err := json.Unmarshal(raw, &document.sources); err != nil {
-		return Document{}, fmt.Errorf("parse %s: which.sources must be a JSON object: %w", path, err)
-	}
-	var wire map[string]*bool
-	if err := json.Unmarshal(raw, &wire); err != nil {
-		return Document{}, fmt.Errorf("parse %s: every entry of which.sources must be true or false: %w", path, err)
-	}
-	for _, name := range sourceNames {
-		if value, ok := wire[name]; ok && value != nil {
-			document.Config.Which.Sources[name] = *value
+
+	if raw, ok := document.which["sources"]; ok {
+		if err := json.Unmarshal(raw, &document.sources); err != nil {
+			return Document{}, fmt.Errorf("parse %s: which.sources must be a JSON object: %w", path, err)
+		}
+		var wire map[string]*bool
+		if err := json.Unmarshal(raw, &wire); err != nil {
+			return Document{}, fmt.Errorf("parse %s: every entry of which.sources must be true or false: %w", path, err)
+		}
+		for _, name := range sourceNames {
+			if value, ok := wire[name]; ok && value != nil {
+				document.Config.Which.Sources[name] = *value
+			}
 		}
 	}
+
+	var err error
+	if document.Config.Which.Gentle, err = parseEntries(document.which, "gentle", path); err != nil {
+		return Document{}, err
+	}
+	if document.Config.Which.Custom, err = parseEntries(document.which, "custom", path); err != nil {
+		return Document{}, err
+	}
+	if raw, ok := document.which["view"]; ok {
+		var view string
+		if err := json.Unmarshal(raw, &view); err != nil {
+			return Document{}, fmt.Errorf("parse %s: which.view must be a string: %w", path, err)
+		}
+		document.Config.Which.View = NormalizeView(view)
+	}
 	return document, nil
+}
+
+// parseEntries reads one manual entry array. An entry without a key cannot be
+// shown, so it is dropped; the array around it must still be readable, and a
+// value of the wrong type is refused the same way a malformed toggle is.
+func parseEntries(which map[string]json.RawMessage, key, path string) ([]Entry, error) {
+	raw, ok := which[key]
+	if !ok {
+		return nil, nil
+	}
+	var wire []struct {
+		Key         *string `json:"key"`
+		Description *string `json:"description"`
+		Command     *string `json:"command"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return nil, fmt.Errorf("parse %s: which.%s must be an array of {key, description, command} objects: %w", path, key, err)
+	}
+	entries := make([]Entry, 0, len(wire))
+	for _, item := range wire {
+		if item.Key == nil {
+			continue
+		}
+		entry := Entry{Key: strings.TrimSpace(*item.Key)}
+		if entry.Key == "" {
+			continue
+		}
+		if item.Description != nil {
+			entry.Description = strings.TrimSpace(*item.Description)
+		}
+		if item.Command != nil {
+			entry.Command = strings.TrimSpace(*item.Command)
+		}
+		entries = append(entries, entry)
+	}
+	return entries, nil
 }
 
 // Save writes the document back, recording every known toggle and merging it into
@@ -209,6 +290,11 @@ func Save(path string, document Document) error {
 		return fmt.Errorf("encode which.sources: %w", err)
 	}
 	which["sources"] = encodedSources
+	encodedView, err := json.Marshal(NormalizeView(document.Config.Which.View))
+	if err != nil {
+		return fmt.Errorf("encode which.view: %w", err)
+	}
+	which["view"] = encodedView
 	encodedWhich, err := json.MarshalIndent(which, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode which: %w", err)

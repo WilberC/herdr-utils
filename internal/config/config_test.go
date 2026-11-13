@@ -262,3 +262,136 @@ func section(t *testing.T, document map[string]any, name string) map[string]any 
 	}
 	return section
 }
+
+// TestLoadReadsTheManualEntriesAndTheSavedView pins the two parts of the guide's
+// config a user writes by hand: the manual entry arrays and the view the guide
+// writes back when it cycles.
+func TestLoadReadsTheManualEntriesAndTheSavedView(t *testing.T) {
+	root := t.TempDir()
+	writeConfig(t, root, `{
+  "tools": {"which": true},
+  "which": {
+    "sources": {"gentle": true, "custom": true},
+    "view": "list",
+    "gentle": [{"key": "ctrl+g", "description": "Lazygit", "command": "fish -c lazygit"}],
+    "custom": [
+      {"key": "prefix+w", "description": "Which", "command": "bin/hu which"},
+      {"description": "no key, so it cannot be shown"},
+      {"key": "  ", "description": "blank key"}
+    ]
+  }
+}`)
+
+	document, err := Load(envFrom(map[string]string{"XDG_CONFIG_HOME": root}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if got := document.Config.Which.View; got != ViewList {
+		t.Fatalf("View = %q, want %q", got, ViewList)
+	}
+	gentle := document.Config.Which.Gentle
+	if len(gentle) != 1 {
+		t.Fatalf("Gentle = %#v, want one entry", gentle)
+	}
+	if want := (Entry{Key: "ctrl+g", Description: "Lazygit", Command: "fish -c lazygit"}); gentle[0] != want {
+		t.Fatalf("Gentle[0] = %#v, want %#v", gentle[0], want)
+	}
+	custom := document.Config.Which.Custom
+	if len(custom) != 1 {
+		t.Fatalf("Custom = %#v, want the keyless entries skipped", custom)
+	}
+	if want := (Entry{Key: "prefix+w", Description: "Which", Command: "bin/hu which"}); custom[0] != want {
+		t.Fatalf("Custom[0] = %#v, want %#v", custom[0], want)
+	}
+}
+
+func TestLoadNormalizesAnUnknownViewToKeys(t *testing.T) {
+	root := t.TempDir()
+	writeConfig(t, root, `{"which": {"view": "grid"}}`)
+
+	document, err := Load(envFrom(map[string]string{"XDG_CONFIG_HOME": root}))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := document.Config.Which.View; got != ViewKeys {
+		t.Fatalf("View = %q, want the unknown view normalized to %q", got, ViewKeys)
+	}
+
+	if got := NormalizeView(""); got != ViewKeys {
+		t.Fatalf("NormalizeView(\"\") = %q, want %q", got, ViewKeys)
+	}
+	if got := NormalizeView("LIST"); got != ViewList {
+		t.Fatalf("NormalizeView(\"LIST\") = %q, want %q", got, ViewList)
+	}
+}
+
+func TestLoadRejectsMalformedManualEntriesAndNamesThem(t *testing.T) {
+	for name, body := range map[string]string{
+		"a gentle section that is not an array": `{"which": {"gentle": {"key": "a"}}}`,
+		"an entry that is not an object":        `{"which": {"custom": ["a"]}}`,
+		"a key that is not a string":            `{"which": {"custom": [{"key": 1}]}}`,
+		"a view that is not a string":           `{"which": {"view": 2}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeConfig(t, root, body)
+
+			_, err := Load(envFrom(map[string]string{"XDG_CONFIG_HOME": root}))
+			if err == nil {
+				t.Fatal("Load = nil error, want the malformed file refused")
+			}
+			if !strings.Contains(err.Error(), "config.json") {
+				t.Fatalf("error = %q, want the file named", err)
+			}
+		})
+	}
+}
+
+// TestSaveRecordsTheViewAndKeepsTheManualEntries pins the round trip a ctrl+t in
+// the guide depends on: the view is written, and the hand-maintained entry
+// arrays survive byte for byte, unknown fields included.
+func TestSaveRecordsTheViewAndKeepsTheManualEntries(t *testing.T) {
+	root := t.TempDir()
+	getenv := envFrom(map[string]string{"XDG_CONFIG_HOME": root})
+	writeConfig(t, root, `{
+  "tools": {"which": true},
+  "which": {
+    "sources": {"gentle": true},
+    "gentle": [{"key": "ctrl+g", "description": "Lazygit", "command": "fish -c lazygit", "note": "kept"}]
+  }
+}`)
+	document, err := Load(getenv)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	document.Config.Which.View = ViewList
+
+	path, err := Path(getenv)
+	if err != nil {
+		t.Fatalf("Path: %v", err)
+	}
+	if err := Save(path, document); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	raw := readRaw(t, path)
+	which := section(t, raw, "which")
+	if which["view"] != ViewList {
+		t.Fatalf("which.view = %v, want %q", which["view"], ViewList)
+	}
+	gentle, ok := which["gentle"].([]any)
+	if !ok || len(gentle) != 1 {
+		t.Fatalf("which.gentle = %#v, want the hand-written array kept", which["gentle"])
+	}
+	first, ok := gentle[0].(map[string]any)
+	if !ok {
+		t.Fatalf("which.gentle[0] = %T, want an object", gentle[0])
+	}
+	if first["note"] != "kept" || first["command"] != "fish -c lazygit" {
+		t.Fatalf("which.gentle[0] = %#v, want the entry kept verbatim", first)
+	}
+	if tools := section(t, raw, "tools"); tools[ToolWhich] != true {
+		t.Fatalf("tools.which = %v, want the enabled tool kept", tools[ToolWhich])
+	}
+}

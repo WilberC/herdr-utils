@@ -1,13 +1,14 @@
-// Package manifest reads the plugin manifest, herdr-plugin.toml, for the fields
-// the binary reports at runtime: the plugin version and the herdr version floor.
+// Package manifest reads TOML documents for the fields herdr-utils reports at
+// runtime: herdr-plugin.toml for the plugin version and the herdr version floor,
+// and the [[keys.command]] tables of the user's herdr config.toml.
 //
-// herdr reads the whole manifest with a TOML parser, and this package does not
-// try to replace it. Parse is a structural reader: it collects the top-level
-// string keys it needs and ignores everything else, including the tables and the
-// multi-line arrays the manifest holds. That keeps the binary free of a TOML
-// dependency, and the repository's tests keep validating the whole file with
-// python's tomllib, so a manifest this reader accepts but herdr rejects still
-// fails the suite.
+// herdr and the user read those files with a TOML parser, and this package does
+// not try to replace it. Parse and Tables are structural readers: they collect
+// the quoted string values they need and ignore everything else, including the
+// tables, numbers and multi-line arrays the documents hold. That keeps the
+// binary free of a TOML dependency, and the repository's tests keep validating
+// the plugin manifest with python's tomllib, so a manifest this reader accepts
+// but herdr rejects still fails the suite.
 package manifest
 
 import (
@@ -93,20 +94,190 @@ func reported(key string) bool {
 	return false
 }
 
-// stripComment removes a trailing '#' comment. The manifest's string values
-// never hold a '#', so the first one outside a quote ends the line; a '#' inside
-// quotes is kept.
-func stripComment(line string) string {
-	quoted := false
-	for index, r := range line {
+// Table is one entry of an array of tables, as Tables collects it: the quoted
+// string values it declares, by key. A value that is not a quoted string is
+// absent, so a caller reads a missing key exactly like an unreadable one.
+type Table struct {
+	Values map[string]string
+}
+
+// Tables reads every [[<name>]] entry of a TOML document and collects the quoted
+// string values each entry declares. Everything else is skipped rather than
+// refused: another table's keys, numbers, booleans, inline tables, arrays that
+// span lines, and lines that are not key/value pairs, so a hand-edited config
+// with one broken line still yields every binding it can read.
+func Tables(data []byte, name string) []Table {
+	lines := strings.Split(string(data), "\n")
+	header := normalizeHeader("[[" + name + "]]")
+
+	tables := make([]Table, 0, 4)
+	current := -1
+
+	for index := 0; index < len(lines); index++ {
+		trimmed := strings.TrimSpace(stripComment(lines[index]))
 		switch {
-		case r == '"':
-			quoted = !quoted
-		case r == '#' && !quoted:
+		case trimmed == "":
+			continue
+		case strings.HasPrefix(trimmed, "[[") && strings.HasSuffix(trimmed, "]]"):
+			if normalizeHeader(trimmed) == header {
+				tables = append(tables, Table{Values: map[string]string{}})
+				current = len(tables) - 1
+			} else {
+				current = -1
+			}
+			continue
+		case strings.HasPrefix(trimmed, "["):
+			current = -1
+			continue
+		}
+		if current < 0 {
+			continue
+		}
+
+		key, rest, ok := strings.Cut(trimmed, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		value, consumed, ok := readValue(strings.TrimSpace(rest), lines, index+1)
+		index += consumed
+		if !ok {
+			continue
+		}
+		tables[current].Values[key] = value
+	}
+	return tables
+}
+
+// normalizeHeader drops the spaces a TOML header may carry, so [[keys.command]]
+// and [[ keys.command ]] are the same table.
+func normalizeHeader(header string) string {
+	return strings.ReplaceAll(header, " ", "")
+}
+
+// readValue reads one value that starts on the line after rest. It returns the
+// value, how many following lines it consumed, and whether the value is a quoted
+// string Tables collects. A multi-line string and an array that spans lines are
+// consumed whole, so their contents never look like a key.
+func readValue(rest string, lines []string, next int) (string, int, bool) {
+	for _, delimiter := range []string{"'''", `"""`} {
+		if !strings.HasPrefix(rest, delimiter) {
+			continue
+		}
+		body := rest[len(delimiter):]
+		if end := strings.Index(body, delimiter); end >= 0 {
+			return body[:end], 0, true
+		}
+		var value strings.Builder
+		value.WriteString(body)
+		for consumed := 1; next+consumed-1 < len(lines); consumed++ {
+			line := lines[next+consumed-1]
+			value.WriteString("\n")
+			if end := strings.Index(line, delimiter); end >= 0 {
+				value.WriteString(line[:end])
+				return value.String(), consumed, true
+			}
+			value.WriteString(line)
+		}
+		return value.String(), len(lines) - next, true
+	}
+
+	if strings.HasPrefix(rest, "\"") {
+		if len(rest) < 2 || !strings.HasSuffix(rest, "\"") {
+			return "", 0, false
+		}
+		return rest[1 : len(rest)-1], 0, true
+	}
+
+	if strings.HasPrefix(rest, "[") || strings.HasPrefix(rest, "{") {
+		depth := bracketDepth(rest)
+		consumed := 0
+		for depth > 0 && next+consumed < len(lines) {
+			depth += bracketDepth(lines[next+consumed])
+			consumed++
+		}
+		return "", consumed, false
+	}
+
+	return "", 0, false
+}
+
+// bracketDepth counts the brackets a line opens and closes, ignoring the ones
+// inside a quoted string.
+func bracketDepth(line string) int {
+	depth := 0
+	quoted := false
+	for index := 0; index < len(line); index++ {
+		switch {
+		case quoted:
+			if line[index] == '\\' {
+				index++
+				continue
+			}
+			if line[index] == '"' {
+				quoted = false
+			}
+		case line[index] == '"':
+			quoted = true
+		case line[index] == '[' || line[index] == '{':
+			depth++
+		case line[index] == ']' || line[index] == '}':
+			depth--
+		}
+	}
+	if depth < 0 {
+		return 0
+	}
+	return depth
+}
+
+// stripComment removes a trailing '#' comment. A '#' inside a quoted string is
+// kept, and a string that does not close on the line keeps the whole line, so a
+// multi-line value is never truncated by a '#' it holds.
+func stripComment(line string) string {
+	for index := 0; index < len(line); index++ {
+		switch {
+		case strings.HasPrefix(line[index:], "'''"):
+			end := strings.Index(line[index+3:], "'''")
+			if end < 0 {
+				return line
+			}
+			index += end + 5
+		case strings.HasPrefix(line[index:], `"""`):
+			end := strings.Index(line[index+3:], `"""`)
+			if end < 0 {
+				return line
+			}
+			index += end + 5
+		case line[index] == '"':
+			end := closingQuote(line, index)
+			if end < 0 {
+				return line
+			}
+			index = end
+		case line[index] == '#':
 			return line[:index]
 		}
 	}
 	return line
+}
+
+// closingQuote returns the index of the quote that closes the basic string
+// opened at start, or -1 when the string does not close on this line. An escaped
+// quote does not close it.
+func closingQuote(line string, start int) int {
+	for index := start + 1; index < len(line); index++ {
+		switch line[index] {
+		case '\\':
+			index++
+		case '"':
+			return index
+		}
+	}
+	return -1
 }
 
 // Read reads the manifest at path, naming the file in every error it reports.

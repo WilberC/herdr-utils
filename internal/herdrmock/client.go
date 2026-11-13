@@ -67,10 +67,12 @@ type Call struct {
 	Target string
 }
 
-// ActionClient is the part of Client that lists plugin actions. An empty plugin
-// asks for every installed plugin; a plugin name narrows the read to it.
+// ActionClient is the part of Client that lists and runs plugin actions. An empty
+// plugin asks for every installed plugin; a plugin name narrows the read to it.
+// InvokeAction takes the fully-qualified id herdr uses, "<plugin>.<action>".
 type ActionClient interface {
 	PluginActions(ctx context.Context, plugin string) ([]Action, error)
+	InvokeAction(ctx context.Context, actionID string) error
 }
 
 // SessionClient is the part of Client that reads the live session.

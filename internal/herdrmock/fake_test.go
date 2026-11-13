@@ -77,6 +77,29 @@ func TestClientContract(t *testing.T) {
 			wantCalls: []herdrmock.Call{{Method: "PluginActions"}},
 		},
 		{
+			name: "invoke action records the fully qualified id",
+			fake: fixture,
+			call: func(ctx context.Context, client herdrmock.Client) (any, error) {
+				return nil, client.InvokeAction(ctx, "herdr-bar.open")
+			},
+			wantCalls: []herdrmock.Call{
+				{Method: "InvokeAction", Target: "herdr-bar.open"},
+			},
+		},
+		{
+			name: "invoke action surfaces the scripted error",
+			fake: func() *herdrmock.Fake {
+				fake := fixture()
+				fake.InvokeErr = errors.New("action is not available here")
+				return fake
+			},
+			call: func(ctx context.Context, client herdrmock.Client) (any, error) {
+				return nil, client.InvokeAction(ctx, "herdr-bar.open")
+			},
+			wantErr:   "action is not available here",
+			wantCalls: []herdrmock.Call{{Method: "InvokeAction", Target: "herdr-bar.open"}},
+		},
+		{
 			name: "session returns the scripted snapshot",
 			fake: fixture,
 			call: func(ctx context.Context, client herdrmock.Client) (any, error) {

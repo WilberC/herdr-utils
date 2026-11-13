@@ -82,6 +82,13 @@ func (c *Client) PluginActions(ctx context.Context, plugin string) ([]herdrmock.
 	return actions, nil
 }
 
+// InvokeAction runs one plugin action through "herdr plugin action invoke",
+// which takes the fully-qualified id "<plugin>.<action>".
+func (c *Client) InvokeAction(ctx context.Context, actionID string) error {
+	_, err := c.run(ctx, "plugin", "action", "invoke", actionID)
+	return err
+}
+
 // Plugins lists the installed plugins, reading the ids and refs
 // "herdr plugin list --json" reports.
 func (c *Client) Plugins(ctx context.Context) ([]herdrmock.Plugin, error) {

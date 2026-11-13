@@ -274,3 +274,31 @@ func TestInstallPluginReportsTheHerdrError(t *testing.T) {
 }
 
 var _ herdrmock.Client = (*Client)(nil)
+
+func TestInvokeActionRunsTheFullyQualifiedActionId(t *testing.T) {
+	t.Setenv(EnvBinary, writeStub(t, `#!/bin/sh
+if [ "$*" != "plugin action invoke herdr-bar.open" ]; then
+  echo "unexpected call: $*" >&2
+  exit 9
+fi
+`))
+
+	if err := New().InvokeAction(context.Background(), "herdr-bar.open"); err != nil {
+		t.Fatalf("InvokeAction error = %v, want nil", err)
+	}
+}
+
+func TestInvokeActionReportsTheHerdrError(t *testing.T) {
+	t.Setenv(EnvBinary, writeStub(t, "#!/bin/sh\necho 'action is not available here' >&2\nexit 5\n"))
+
+	err := New().InvokeAction(context.Background(), "herdr-suite.save")
+
+	if err == nil {
+		t.Fatal("InvokeAction error = nil, want a failure")
+	}
+	for _, want := range []string{"herdr plugin action invoke herdr-suite.save", "exit status 5", "action is not available here"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("InvokeAction error = %q, want it to contain %q", err, want)
+		}
+	}
+}

@@ -16,6 +16,7 @@ type Fake struct {
 	Installed []Plugin
 
 	PluginActionsErr  error
+	InvokeErr         error
 	SessionErr        error
 	FocusWorkspaceErr error
 	FocusTabErr       error
@@ -54,6 +55,12 @@ func (f *Fake) PluginActions(ctx context.Context, plugin string) ([]Action, erro
 		}
 	}
 	return actions, nil
+}
+
+// InvokeAction records the action it was asked to run.
+func (f *Fake) InvokeAction(ctx context.Context, actionID string) error {
+	f.record("InvokeAction", actionID)
+	return f.InvokeErr
 }
 
 // Session returns the scripted snapshot.
