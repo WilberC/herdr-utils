@@ -45,7 +45,9 @@ itself is off.
 
 Inside herdr the guide is a plugin action, so it needs no `PATH` entry at all.
 The manifest declares one global action, `which` ("Open the keybinding guide"),
-and the plugin binds it itself: herdr's manifest format cannot declare a key,
+whose command opens the manifest's popup pane — `hu which` is a full-screen
+TUI and an action command has no terminal of its own — and the plugin binds
+the action itself: herdr's manifest format cannot declare a key,
 so the `[[startup]]` hook maintains a fenced block in your herdr
 `config.toml`:
 

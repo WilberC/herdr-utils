@@ -27,9 +27,21 @@ command = ["bin/hu", "startup"]
 # declares the action and binds it itself: the [[startup]] hook writes a fenced
 # block on prefix+i into the herdr config (internal/keybind), so a fresh
 # install works with no manual step; "hu keys remove" takes it off.
+#
+# hu which is a full-screen TUI, so the action opens the [[panes]] popup below
+# (the herdr-suite pattern): an action command has no terminal of its own.
 [[actions]]
 id = "which"
 title = "Open the keybinding guide"
 description = "Open the keybinding guide for herdr; the tool is default off, so set tools.which = true first"
 contexts = ["global"]
+command = ["bash", "-c", "exec \"${HERDR_BIN_PATH:-herdr}\" plugin pane open --plugin herdr-utils --entrypoint which --placement popup --focus"]
+
+[[panes]]
+id = "which"
+title = "Keybinding guide"
+description = "The herdr keybinding guide, grouped by source"
+placement = "popup"
+width = "74%"
+height = "62%"
 command = ["bin/hu", "which"]
