@@ -45,11 +45,11 @@ want and leave the rest off:
 }
 ```
 
-Then bind the action herdr declares, and `prefix+w` opens the guide:
+Then bind the action herdr declares, and `prefix+i` opens the guide:
 
 ```toml
 [[keys.command]]
-key = "prefix+w"
+key = "prefix+i"
 type = "plugin_action"
 command = "herdr-utils.which"
 ```
@@ -91,7 +91,7 @@ smoke-tested by the release workflow itself.
 | Document | Covers |
 | --- | --- |
 | [Install](docs/install.md) | plugin install, the manual binary download and its checksum, the `[[build]]` hook |
-| [Which](docs/which.md) | the keybinding guide, its four sources, its toggles and the `prefix+w` binding |
+| [Which](docs/which.md) | the keybinding guide, its four sources, its toggles and the `prefix+i` binding |
 | [Plugins](docs/plugins.md) | the catalog, `hu plugins list` and `sync`, and why the README section is generated |
 | [Health](docs/health.md) | `hu version`, the startup gate, the config file and the exit codes |
 | [Development](docs/development.md) | offline tests, `make` targets, the workflows, the release flow and the repository layout |

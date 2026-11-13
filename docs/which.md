@@ -45,12 +45,12 @@ itself is off.
 
 Inside herdr the guide is a plugin action, so it needs no `PATH` entry at all.
 The manifest declares one global action, `which` ("Open the keybinding guide"),
-and you choose the key — `prefix+w` reads well and is free in a default herdr
-config:
+and you choose the key — `prefix+i` reads well and is free in a default herdr
+config (`prefix+w` is the workspace picker):
 
 ```toml
 [[keys.command]]
-key = "prefix+w"
+key = "prefix+i"
 type = "plugin_action"
 command = "herdr-utils.which"
 ```
