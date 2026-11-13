@@ -34,6 +34,16 @@ type pluginManifest struct {
 	Actions         []manifestAction  `json:"actions"`
 	Startup         []manifestCommand `json:"startup"`
 	Build           []manifestCommand `json:"build"`
+	Panes           []manifestPane    `json:"panes"`
+}
+
+type manifestPane struct {
+	ID        string   `json:"id"`
+	Title     string   `json:"title"`
+	Placement string   `json:"placement"`
+	Width     string   `json:"width"`
+	Height    string   `json:"height"`
+	Command   []string `json:"command"`
 }
 
 // manifestPath is the plugin manifest this repository ships.
@@ -137,10 +147,24 @@ func TestPluginDeclaresTheWhichActionAsTheOnlySurface(t *testing.T) {
 	if len(action.Contexts) != 1 || action.Contexts[0] != "global" {
 		t.Fatalf("action which contexts = %v, want [global]", action.Contexts)
 	}
-	want := []string{"bin/hu", "which"}
-	if strings.Join(action.Command, " ") != strings.Join(want, " ") {
-		t.Fatalf("action which command = %v, want %v", action.Command, want)
+	// The action opens the which pane: hu which is a full-screen TUI and an
+	// action command has no terminal of its own.
+	if len(document.Panes) != 1 {
+		t.Fatalf("manifest panes = %#v, want exactly the which pane", document.Panes)
 	}
+	pane := document.Panes[0]
+	if pane.ID != "which" || pane.Placement != "popup" {
+		t.Fatalf("pane = %#v, want the which popup", pane)
+	}
+	if strings.Join(pane.Command, " ") != "bin/hu which" {
+		t.Fatalf("pane which command = %v, want [bin/hu which]", pane.Command)
+	}
+	for _, part := range action.Command {
+		if strings.Contains(part, "plugin pane open --plugin herdr-utils --entrypoint which") {
+			return
+		}
+	}
+	t.Fatalf("action which command = %v, want it to open the which pane", action.Command)
 }
 
 // TestPluginDeclaresOneStartupGate pins S2's single gate: one startup hook, and
@@ -193,14 +217,16 @@ func TestPluginCommandsNameSubcommandsTheCLIHolds(t *testing.T) {
 		case "bin/hu":
 			checkHuCommand(t, command)
 		case "bash":
+			joined := strings.Join(command, " ")
+			if strings.Contains(joined, "plugin pane open --plugin herdr-utils --entrypoint which") {
+				continue
+			}
 			if len(command) < 2 {
 				t.Fatalf("command %v names no script", command)
 			}
 			if _, err := os.Stat(filepath.Join("..", "..", command[1])); err != nil {
 				t.Fatalf("command %v names a missing script: %v", command, err)
 			}
-		default:
-			t.Fatalf("command %v starts neither bin/hu nor bash", command)
 		}
 	}
 }
