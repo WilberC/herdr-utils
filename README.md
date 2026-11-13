@@ -30,6 +30,7 @@ on, so installing the container changes nothing.
 
 ```bash
 herdr plugin install WilberC/herdr-utils   # fetch the plugin; its build hook provisions bin/hu
+hu plugins sync                            # installs the recommended plugins this catalog declares
 ```
 
 The plugin config lives in the herdr plugin config directory —
@@ -56,13 +57,27 @@ command = "herdr-utils.which"
 Every step has its own section: [Install](docs/install.md), [The keybinding
 guide](docs/which.md) and [Recommended plugins](docs/plugins.md).
 
+## Recommended plugins
+
+<!-- generated:recommended start -->
+Install the core entries with `hu plugins sync`; add `--optional` to include the optional ones.
+
+| Plugin | Why | Kind |
+| --- | --- | --- |
+| [`speardragon/herdr-plugin-manager`](https://github.com/speardragon/herdr-plugin-manager) | Plugin management TUI | core |
+| [`jeffarese/herdr-bar`](https://github.com/jeffarese/herdr-bar) | Command bar with focus history and agent icons | core |
+| [`WilberC/herdr-suite`](https://github.com/WilberC/herdr-suite) | Sessions, space layout snapshot/restore and focus-history toggles | core |
+| [`lmilojevicc/herdr-last`](https://github.com/lmilojevicc/herdr-last) | Previous workspace and tab toggle daemon | optional |
+| [`ramarivera/herdr-pretty-which`](https://github.com/ramarivera/herdr-pretty-which) | Keybinding guide beta; needs a Rust toolchain | optional |
+<!-- generated:recommended end -->
+
 ## Cheatsheet
 
 | Command | Does | Detail |
 | --- | --- | --- |
 | `hu which` | open the keybinding guide | [which](docs/which.md) |
 | `hu plugins list` | catalog plugins against this machine's installs | [plugins](docs/plugins.md) |
-| `hu plugins sync` | install the missing catalog plugins (`--dry-run`, `--json`) | [plugins](docs/plugins.md) |
+| `hu plugins sync` | install the missing catalog plugins (`--dry-run`, `--json`, `--optional`) | [plugins](docs/plugins.md) |
 | `hu startup` | apply the config gate; herdr runs this at server start | [health](docs/health.md#the-startup-gate) |
 | `hu version` | the release this binary was built as | [health](docs/health.md#version) |
 | `hu version --check` | compare the binary with the manifest beside it | [health](docs/health.md#version) |
@@ -83,10 +98,10 @@ smoke-tested by the release workflow itself.
 
 ## Status
 
-This release line ships the container, its config toggles, the startup gate and
-the `which` action. The guide's screen and the catalog commands land in the same
-release line; until then `hu which` and `hu plugins` print their usage and exit
-2, which no script mistakes for success.
+This release line ships the container, its config toggles, the startup gate, the
+`which` action and the plugin catalog. The guide's screen lands in the same
+release line; until then `hu which` prints its usage and exits 2, which no script
+mistakes for success.
 
 ## License
 

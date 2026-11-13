@@ -54,6 +54,13 @@ type Session struct {
 	Agents             []Agent
 }
 
+// Plugin is one installed plugin as "herdr plugin list --json" reports it: its
+// id and, when herdr knows it, the ref it was installed from.
+type Plugin struct {
+	ID  string
+	Ref string
+}
+
 // Call records one invoked Client method and the identifier it targeted.
 type Call struct {
 	Method string
@@ -78,9 +85,18 @@ type FocusClient interface {
 	FocusAgent(ctx context.Context, target string) error
 }
 
+// PluginClient is the part of Client that inventories and installs plugins.
+// InstallPlugin takes the pinned ref the catalog declares, empty when the entry
+// is not pinned.
+type PluginClient interface {
+	Plugins(ctx context.Context) ([]Plugin, error)
+	InstallPlugin(ctx context.Context, repo, ref string) error
+}
+
 // Client is the minimal herdr surface herdr-utils depends on.
 type Client interface {
 	ActionClient
 	SessionClient
 	FocusClient
+	PluginClient
 }

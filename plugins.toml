@@ -1,0 +1,28 @@
+# The recommended herdr plugins. This file is the catalog: the README's
+# "Recommended plugins" section is rendered from it by `hu plugins render`, and
+# `hu plugins list` / `hu plugins sync` read it to compare and install.
+#
+# Each [[plugin]] entry names the plugin's owner/repo and one line saying why it
+# is recommended. optional = true keeps an entry out of a default sync unless
+# --optional is passed. ref pins the version a sync installs.
+[[plugin]]
+repo = "speardragon/herdr-plugin-manager"
+reason = "Plugin management TUI"
+
+[[plugin]]
+repo = "jeffarese/herdr-bar"
+reason = "Command bar with focus history and agent icons"
+
+[[plugin]]
+repo = "WilberC/herdr-suite"
+reason = "Sessions, space layout snapshot/restore and focus-history toggles"
+
+[[plugin]]
+repo = "lmilojevicc/herdr-last"
+reason = "Previous workspace and tab toggle daemon"
+optional = true
+
+[[plugin]]
+repo = "ramarivera/herdr-pretty-which"
+reason = "Keybinding guide beta; needs a Rust toolchain"
+optional = true

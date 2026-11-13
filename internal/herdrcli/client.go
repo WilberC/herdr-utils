@@ -82,6 +82,49 @@ func (c *Client) PluginActions(ctx context.Context, plugin string) ([]herdrmock.
 	return actions, nil
 }
 
+// Plugins lists the installed plugins, reading the ids and refs
+// "herdr plugin list --json" reports.
+func (c *Client) Plugins(ctx context.Context) ([]herdrmock.Plugin, error) {
+	out, err := c.run(ctx, "plugin", "list", "--json")
+	if err != nil {
+		return nil, err
+	}
+
+	var document struct {
+		Result struct {
+			Plugins []struct {
+				ID      string `json:"plugin_id"`
+				Ref     string `json:"ref"`
+				Version string `json:"version"`
+			} `json:"plugins"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out, &document); err != nil {
+		return nil, fmt.Errorf("parse herdr plugin list --json: %w", err)
+	}
+
+	installed := make([]herdrmock.Plugin, 0, len(document.Result.Plugins))
+	for _, plugin := range document.Result.Plugins {
+		ref := plugin.Ref
+		if ref == "" {
+			ref = plugin.Version
+		}
+		installed = append(installed, herdrmock.Plugin{ID: plugin.ID, Ref: ref})
+	}
+	return installed, nil
+}
+
+// InstallPlugin installs one plugin, pinned to ref when the catalog declares
+// one, and answers the -y herdr asks for on a non-interactive install.
+func (c *Client) InstallPlugin(ctx context.Context, repo, ref string) error {
+	args := []string{"plugin", "install", repo, "-y"}
+	if ref != "" {
+		args = append(args, "--ref", ref)
+	}
+	_, err := c.run(ctx, args...)
+	return err
+}
+
 // Session reads the live session through "herdr api snapshot".
 func (c *Client) Session(ctx context.Context) (herdrmock.Session, error) {
 	out, err := c.run(ctx, "api", "snapshot")

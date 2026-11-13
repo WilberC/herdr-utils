@@ -85,3 +85,4 @@ installs them. Command: `hu`. Sibling of
   screenshot: grouped multi-column layout with per-group counts, live filter,
   footer hints, KEYS/LIST views; in hu which the groups are the sources (HS,
   GENTLE, CUSTOM, DISCOVERED).
+- L5 (2026-11-13): T2 worker report evidence: RED (build failures, then the render test caught plugins.toml resolution from the package dir); GREEN 7 packages; render section byte-idempotent between markers and pinned by a test against the real catalog. Ref pinning flagged by the worker as an assumption (herdr's `--ref`/registry keys unverified) — no seeded entry is pinned so the default sync path is unaffected; verify before adding pinned entries. Catalog seeded with the five ecosystem plugins (herdr-last and pretty-which optional). Commit follows.

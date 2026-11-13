@@ -72,7 +72,7 @@ func runVersion(d deps, args []string) int {
 	}
 	if !options.check {
 		if options.json {
-			return report(writeVersionJSON(d.out, versionDocument{Version: d.buildVersion()}), d.err)
+			return report(writeJSON(d.out, versionDocument{Version: d.buildVersion()}), d.err)
 		}
 		fmt.Fprintf(d.out, "hu version %s\n", d.buildVersion())
 		return 0
@@ -89,7 +89,7 @@ func runVersion(d deps, args []string) int {
 			OK:       check.OK,
 			Detail:   check.Detail,
 		}
-		if err := writeVersionJSON(d.out, document); err != nil {
+		if err := writeJSON(d.out, document); err != nil {
 			return report(err, d.err)
 		}
 		return exitCode(check.OK)
@@ -202,15 +202,15 @@ type versionCheckDocument struct {
 	Detail   string `json:"detail"`
 }
 
-// writeVersionJSON prints one JSON document on one line, so a script can read the
+// writeJSON prints one JSON document on one line, so a script can read the
 // version without a parser that tolerates pretty printing.
-func writeVersionJSON(out io.Writer, document any) error {
+func writeJSON(out io.Writer, document any) error {
 	data, err := json.Marshal(document)
 	if err != nil {
-		return fmt.Errorf("encode the version: %w", err)
+		return fmt.Errorf("encode the document: %w", err)
 	}
 	if _, err := fmt.Fprintln(out, string(data)); err != nil {
-		return fmt.Errorf("write the version: %w", err)
+		return fmt.Errorf("write the document: %w", err)
 	}
 	return nil
 }

@@ -39,15 +39,6 @@ Every source of bindings is default off as well, under which.sources: hs,
 gentle, custom and discovered.
 `
 
-const pluginsUsage = `usage: hu plugins
-
-Keep the recommended herdr plugins installed on this machine.
-
-The tool is default off: set tools.plugins to true in the plugin config, at
-$HERDR_PLUGIN_CONFIG_DIR/config.json or the herdr-utils entry under
-$XDG_CONFIG_HOME/herdr/plugins/config.
-`
-
 const startupUsage = `usage: hu startup
 
 Apply the config gate at herdr server start.
@@ -126,8 +117,10 @@ func runWith(d deps, args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch cmd.name {
-	case "which", "plugins":
+	case "which":
 		return runScaffold(d, cmd, args[1:])
+	case "plugins":
+		return runPlugins(d, args[1:])
 	case "startup":
 		return runStartup(d, args[1:])
 	case "version":

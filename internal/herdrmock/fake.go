@@ -11,11 +11,17 @@ type Fake struct {
 	Actions []Action
 	Current Session
 
+	// Installed is the scripted plugin inventory. A successful install appends
+	// to it, so a test sees the second sync report everything current.
+	Installed []Plugin
+
 	PluginActionsErr  error
 	SessionErr        error
 	FocusWorkspaceErr error
 	FocusTabErr       error
 	FocusAgentErr     error
+	InstalledErr      error
+	InstallErrs       map[string]error
 
 	mu    sync.Mutex
 	calls []Call
@@ -75,6 +81,30 @@ func (f *Fake) FocusTab(ctx context.Context, tabID string) error {
 func (f *Fake) FocusAgent(ctx context.Context, target string) error {
 	f.record("FocusAgent", target)
 	return f.FocusAgentErr
+}
+
+// Plugins returns the scripted inventory.
+func (f *Fake) Plugins(ctx context.Context) ([]Plugin, error) {
+	f.record("Plugins", "")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.InstalledErr != nil {
+		return nil, f.InstalledErr
+	}
+	return append([]Plugin(nil), f.Installed...), nil
+}
+
+// InstallPlugin records the install and, unless the repo is scripted to fail,
+// adds it to the inventory.
+func (f *Fake) InstallPlugin(ctx context.Context, repo, ref string) error {
+	f.record("InstallPlugin", repo)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.InstallErrs[repo]; err != nil {
+		return err
+	}
+	f.Installed = append(f.Installed, Plugin{ID: repo, Ref: ref})
+	return nil
 }
 
 var _ Client = (*Fake)(nil)

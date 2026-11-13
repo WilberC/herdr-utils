@@ -72,6 +72,8 @@ and why a test that needs a socket will not be accepted.
 | `internal/herdrmock/` | the herdr surface as interfaces, and the offline fake |
 | `internal/herdrcli/` | the herdr client: `plugin list --json`, `api snapshot` and the focus commands |
 | `internal/manifest/` | the plugin manifest fields the binary reports: the version and the herdr floor |
+| `internal/plugins/` | the recommended-plugins catalog: parsing `plugins.toml`, rendering the README section, list/sync inventory |
+| `plugins.toml` | the recommended-plugins catalog the README section and the sync commands read |
 | `bin/ensure-binary.sh` | provisions `bin/hu` from a local build or a release asset |
 | `herdr-plugin.toml` | the herdr plugin manifest |
 | `.github/workflows/` | `ci.yml`, the checks every push runs, and `release.yml`, the tagged release |

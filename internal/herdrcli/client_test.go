@@ -203,4 +203,74 @@ func TestClientHonoursAnExplicitBinary(t *testing.T) {
 	}
 }
 
+func TestPluginsReadsTheInstalledInventory(t *testing.T) {
+	t.Setenv(EnvBinary, writeStub(t, `#!/bin/sh
+if [ "$*" != "plugin list --json" ]; then
+  echo "unexpected call: $*" >&2
+  exit 9
+fi
+printf '%s' '{"result":{"plugins":[{"plugin_id":"herdr-suite","ref":"v1.2.0"},{"plugin_id":"herdr-bar","version":"v0.4.1"},{"plugin_id":"herdr-utils"}]}}'
+`))
+
+	installed, err := New().Plugins(context.Background())
+	if err != nil {
+		t.Fatalf("Plugins error = %v, want nil", err)
+	}
+
+	want := []herdrmock.Plugin{
+		{ID: "herdr-suite", Ref: "v1.2.0"},
+		{ID: "herdr-bar", Ref: "v0.4.1"},
+		{ID: "herdr-utils"},
+	}
+	if !reflect.DeepEqual(installed, want) {
+		t.Fatalf("Plugins = %#v, want %#v", installed, want)
+	}
+}
+
+func TestPluginsRejectsUnparsableOutput(t *testing.T) {
+	t.Setenv(EnvBinary, writeStub(t, "#!/bin/sh\nprintf 'not json'\n"))
+
+	_, err := New().Plugins(context.Background())
+
+	if err == nil || !strings.Contains(err.Error(), "parse herdr plugin list") {
+		t.Fatalf("Plugins error = %v, want a parse error", err)
+	}
+}
+
+func TestInstallPluginRunsTheHerdrInstallCommand(t *testing.T) {
+	tests := []struct {
+		name string
+		ref  string
+		want string
+	}{
+		{name: "unpinned", want: "plugin install owner/repo -y"},
+		{name: "pinned", ref: "v1", want: "plugin install owner/repo -y --ref v1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(EnvBinary, writeStub(t, "#!/bin/sh\nif [ \"$*\" != \""+tt.want+"\" ]; then\n  echo \"unexpected call: $*\" >&2\n  exit 9\nfi\n"))
+
+			if err := New().InstallPlugin(context.Background(), "owner/repo", tt.ref); err != nil {
+				t.Fatalf("InstallPlugin error = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestInstallPluginReportsTheHerdrError(t *testing.T) {
+	t.Setenv(EnvBinary, writeStub(t, "#!/bin/sh\necho 'repository not found' >&2\nexit 4\n"))
+
+	err := New().InstallPlugin(context.Background(), "owner/gone", "")
+
+	if err == nil {
+		t.Fatal("InstallPlugin error = nil, want a failure")
+	}
+	for _, want := range []string{"herdr plugin install owner/gone -y", "repository not found"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("InstallPlugin error = %q, want it to contain %q", err, want)
+		}
+	}
+}
+
 var _ herdrmock.Client = (*Client)(nil)
