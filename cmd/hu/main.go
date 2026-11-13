@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/WilberC/herdr-utils/internal/keybind"
 	"time"
 
 	"github.com/WilberC/herdr-utils/internal/config"
@@ -17,6 +19,7 @@ const usage = `usage: hu [command]
 
 Commands:
   which     Open the keybinding guide for herdr
+  keys      Keep the herdr-utils.which action bound in your herdr config
   plugins   Keep the recommended herdr plugins installed
   startup   Apply the config gate; herdr runs this at server start
   version   Print the version this binary was built as
@@ -49,11 +52,13 @@ KEYS and LIST views (saved to the plugin config), and esc closes.
 
 const startupUsage = `usage: hu startup
 
-Apply the config gate at herdr server start.
+Apply what herdr runs this plugin for at server start.
 
-With every tool off this prints one hint once per server socket and changes
-nothing else; with any tool on it does nothing, because there is nothing to
-install. It never blocks a herdr start.
+First the which binding: the fenced block binding the herdr-utils.which action
+in your herdr config (hu keys install), so a config rewrite or a fresh machine
+never loses the key the guide opens on. Then the config gate: with every tool
+off this prints one hint once per server socket and changes nothing else; with
+any tool on there is nothing to start. It never blocks a herdr start.
 `
 
 type command struct {
@@ -64,6 +69,7 @@ type command struct {
 
 var commands = []command{
 	{name: "which", summary: "Open the keybinding guide for herdr", usage: whichUsage},
+	{name: "keys", summary: "Keep the guide action bound in your herdr config", usage: keysUsage},
 	{name: "plugins", summary: "Keep the recommended herdr plugins installed", usage: pluginsUsage},
 	{name: "startup", summary: "Apply the config gate at server start", usage: startupUsage},
 	{name: "version", summary: "Print the build version", usage: versionUsage},
@@ -133,6 +139,8 @@ func runWith(d deps, args []string, stdout, stderr io.Writer) int {
 	switch cmd.name {
 	case "which":
 		return runWhich(d, args[1:])
+	case "keys":
+		return runKeys(d, args[1:])
 	case "plugins":
 		return runPlugins(d, args[1:])
 	case "startup":
@@ -147,6 +155,12 @@ func runWith(d deps, args []string, stdout, stderr io.Writer) int {
 func runStartup(d deps, args []string) int {
 	if len(args) != 0 {
 		return report(usageError{reason: "startup takes no arguments", usage: startupUsage}, d.err)
+	}
+
+	if result, err := keybind.EnsureFile(d.getenv); err != nil {
+		fmt.Fprintf(d.err, "herdr-utils: %v; the guide binding stays as it is\n", err)
+	} else if result.Changed {
+		fmt.Fprintf(d.out, "herdr-utils: bound the guide on %s; reload herdr to pick it up\n", keybind.Key)
 	}
 
 	document, err := config.Load(d.getenv)

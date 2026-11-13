@@ -41,19 +41,31 @@ itself is off.
 }
 ```
 
-## Opening it: bind the action
+## Opening it: the plugin binds itself
 
 Inside herdr the guide is a plugin action, so it needs no `PATH` entry at all.
 The manifest declares one global action, `which` ("Open the keybinding guide"),
-and you choose the key — `prefix+i` reads well and is free in a default herdr
-config (`prefix+w` is the workspace picker):
+and the plugin binds it itself: herdr's manifest format cannot declare a key,
+so the `[[startup]]` hook maintains a fenced block in your herdr
+`config.toml`:
 
 ```toml
+# --- herdr-utils: which (hu which) — begin
 [[keys.command]]
 key = "prefix+i"
 type = "plugin_action"
 command = "herdr-utils.which"
+description = "Keybinding guide"
+# --- herdr-utils: which (hu which) — end
 ```
+
+`prefix+i` is free in a default herdr config; `prefix+w` is the workspace
+picker. The fence is the ownership line: ensure replaces the block when the
+key moved (after you edited it by hand or a config rewrite dropped it) and
+never touches a binding of your own — one that binds the same action on
+another key is reported with `hu keys install`, left for you to move or
+delete. `hu keys status` says where the guide is bound and by what, and
+`hu keys remove` strips the fence and nothing else.
 
 From a shell the same screen is `bin/hu which` in the plugin root. In herdr's
 plugin manager the action is listed at `prefix+p` like any other plugin action,

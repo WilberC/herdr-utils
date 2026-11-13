@@ -45,14 +45,21 @@ want and leave the rest off:
 }
 ```
 
-Then bind the action herdr declares, and `prefix+i` opens the guide:
+No keybinding step is yours: herdr's plugin manifest cannot declare a key,
+so the plugin provisions its own. At every server start the `[[startup]]` hook
+writes a fenced block into your herdr `config.toml` binding the
+`herdr-utils.which` action on `prefix+i` (`prefix+w` is herdr's workspace
+picker), and repairs it after a config rewrite. The plugin owns only the
+fenced lines — a binding you wrote yourself is never touched, and a conflicting
+one is reported, not replaced:
 
-```toml
-[[keys.command]]
-key = "prefix+i"
-type = "plugin_action"
-command = "herdr-utils.which"
+```sh
+hu keys status    # where the guide is bound, and by what
+hu keys install   # add or repair the fenced block (startup does this too)
+hu keys remove    # strip the fenced block and nothing else
 ```
+
+Reload herdr after the first install and `prefix+i` opens the guide.
 
 Every step has its own section: [Install](docs/install.md), [The keybinding
 guide](docs/which.md) and [Recommended plugins](docs/plugins.md).
@@ -91,7 +98,7 @@ smoke-tested by the release workflow itself.
 | Document | Covers |
 | --- | --- |
 | [Install](docs/install.md) | plugin install, the manual binary download and its checksum, the `[[build]]` hook |
-| [Which](docs/which.md) | the keybinding guide, its four sources, its toggles and the `prefix+i` binding |
+| [Which](docs/which.md) | the keybinding guide, its four sources, its toggles and the `prefix+i` binding the plugin installs itself |
 | [Plugins](docs/plugins.md) | the catalog, `hu plugins list` and `sync`, and why the README section is generated |
 | [Health](docs/health.md) | `hu version`, the startup gate, the config file and the exit codes |
 | [Development](docs/development.md) | offline tests, `make` targets, the workflows, the release flow and the repository layout |

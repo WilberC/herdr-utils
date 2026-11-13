@@ -24,7 +24,9 @@ command = ["bash", "bin/ensure-binary.sh", "--in-tree"]
 command = ["bin/hu", "startup"]
 
 # The single user-facing surface in v0.1.0: the keybinding guide. The plugin
-# declares the action, the user binds a key (docs/which.md suggests prefix+i).
+# declares the action and binds it itself: the [[startup]] hook writes a fenced
+# block on prefix+i into the herdr config (internal/keybind), so a fresh
+# install works with no manual step; "hu keys remove" takes it off.
 [[actions]]
 id = "which"
 title = "Open the keybinding guide"
