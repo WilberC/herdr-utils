@@ -54,6 +54,11 @@ type Entry struct {
 // shown, never executed.
 func (e Entry) Invokable() bool { return e.Kind == KindAction && e.ActionID != "" }
 
+// Unset reports whether the entry declares no key of its own: a live plugin
+// action is invoked rather than pressed, so the guide draws it with an empty
+// chip and a muted description.
+func (e Entry) Unset() bool { return e.Key == "" || e.Kind == KindAction }
+
 // Source is one group the guide renders as a column: its header name, the glyph
 // that marks it, its colour, and the entries it declares.
 type Source interface {
@@ -86,13 +91,13 @@ func (g group) Color() lipgloss.Color { return g.color }
 func (g group) Entries() []Entry      { return g.entries }
 func (g group) Problem() string       { return g.problem }
 
-// The colours each source's header and key chips carry. They are constants, not
-// a theming engine: the guide ships four sources and no theme file.
+// The glyph each source's header carries. They come from one solid family, so
+// the four groups read as a set; theme.go owns their colour.
 const (
-	colorHS         lipgloss.Color = "#7dcfff"
-	colorGentle     lipgloss.Color = "#c792ea"
-	colorCustom     lipgloss.Color = "#9ece6a"
-	colorDiscovered lipgloss.Color = "#e0af68"
+	glyphHS         = "◆"
+	glyphGentle     = "●"
+	glyphCustom     = "■"
+	glyphDiscovered = "▲"
 )
 
 // Options carries everything Build needs. Actions is the herdrmock client that
@@ -150,11 +155,11 @@ func Build(ctx context.Context, options Options) Guide {
 		guide.Sources = append(guide.Sources, buildHS(herdrPath, actions))
 	}
 	if options.Config.SourceEnabled(config.SourceGentle) {
-		guide.Sources = append(guide.Sources, buildManual(NameGentle, "✦", colorGentle, "which.sources.gentle", "which.gentle", options.Config.Which.Gentle))
+		guide.Sources = append(guide.Sources, buildManual(NameGentle, glyphGentle, colorGentle, "which.sources.gentle", "which.gentle", options.Config.Which.Gentle))
 		guide.Notes = append(guide.Notes, "GENTLE auto-discovery is not implemented yet: the source reads the which.gentle entries you maintain.")
 	}
 	if options.Config.SourceEnabled(config.SourceCustom) {
-		guide.Sources = append(guide.Sources, buildManual(NameCustom, "✚", colorCustom, "which.sources.custom", "which.custom", options.Config.Which.Custom))
+		guide.Sources = append(guide.Sources, buildManual(NameCustom, glyphCustom, colorCustom, "which.sources.custom", "which.custom", options.Config.Which.Custom))
 	}
 	if options.Config.SourceEnabled(config.SourceDiscovered) {
 		guide.Sources = append(guide.Sources, buildDiscovered(actions, actionsErr))
@@ -191,7 +196,7 @@ func HerdrConfigPath(getenv func(string) string) (string, error) {
 // binding resolves its action title when herdr reports one; without a title the
 // command it declares is what the row shows.
 func buildHS(path string, actions []herdrmock.Action) Source {
-	source := group{name: NameHS, glyph: "◆", color: colorHS, toggle: "which.sources.hs"}
+	source := group{name: NameHS, glyph: glyphHS, color: colorHS, toggle: "which.sources.hs"}
 	if path == "" {
 		source.problem = "cannot locate the herdr config: HERDR_CONFIG_PATH, XDG_CONFIG_HOME and HOME are all unset"
 		return source
@@ -267,7 +272,7 @@ func buildManual(name, glyph string, color lipgloss.Color, toggle, configKey str
 // buildDiscovered maps every action of every installed plugin to one entry keyed
 // enter: the guide delegates to "herdr plugin action invoke <plugin>.<action>".
 func buildDiscovered(actions []herdrmock.Action, err error) Source {
-	source := group{name: NameDiscovered, glyph: "⚡", color: colorDiscovered, toggle: "which.sources.discovered"}
+	source := group{name: NameDiscovered, glyph: glyphDiscovered, color: colorDiscovered, toggle: "which.sources.discovered"}
 	if err != nil {
 		source.problem = fmt.Sprintf("herdr did not answer plugin list: %v", err)
 		return source

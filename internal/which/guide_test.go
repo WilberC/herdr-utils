@@ -144,8 +144,13 @@ func TestCtrlTCyclesTheViewAndSavesIt(t *testing.T) {
 	if !strings.Contains(listView, "LIST") {
 		t.Fatalf("view is not the LIST view:\n%s", listView)
 	}
-	if strings.Index(listView, "Command bar") > strings.Index(listView, "prefix+k") {
-		t.Fatalf("LIST view does not put the description first:\n%s", listView)
+	// LIST is the table view: the chip leads, the description follows it, and the
+	// source closes the row in its own column.
+	if strings.Index(listView, "prefix+k") > strings.Index(listView, "Command bar") {
+		t.Fatalf("LIST view does not put the key chip first:\n%s", listView)
+	}
+	if strings.Index(listView, "Command bar") > strings.LastIndex(listView, "HS") {
+		t.Fatalf("LIST view does not close the row with the source:\n%s", listView)
 	}
 
 	press(m, tea.KeyMsg{Type: tea.KeyCtrlT})
@@ -330,7 +335,7 @@ func TestAnEnabledSourceWithoutEntriesShowsItsProblem(t *testing.T) {
 func TestTheFooterNamesTheKeysAndTheEnterAction(t *testing.T) {
 	bound := New(testGuide(group{name: NameHS, entries: hsEntries()}))
 	view := bound.View()
-	for _, want := range []string{"enter show command", "move", "filter", "ctrl+t view", "esc close"} {
+	for _, want := range []string{"enter  show command", "↑↓", "move", "type", "filter", "ctrl+t", "view", "esc", "close"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("footer does not contain %q:\n%s", want, view)
 		}
@@ -339,7 +344,7 @@ func TestTheFooterNamesTheKeysAndTheEnterAction(t *testing.T) {
 	discovered := New(testGuide(group{name: NameDiscovered, entries: []Entry{
 		{Key: "enter", Description: "Open bar", Kind: KindAction, Command: "herdr plugin action invoke herdr-bar.open", ActionID: "herdr-bar.open"},
 	}}))
-	if view := discovered.View(); !strings.Contains(view, "enter run action") {
+	if view := discovered.View(); !strings.Contains(view, "enter  run action") {
 		t.Fatalf("footer does not invite running the action:\n%s", view)
 	}
 }

@@ -2,27 +2,12 @@ package which
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/WilberC/herdr-utils/internal/config"
-)
-
-// blockTextWidth wraps the problem an empty source prints, so a long path does
-// not destroy the columns beside it.
-const blockTextWidth = 46
-
-var (
-	titleStyle    = lipgloss.NewStyle().Bold(true)
-	filterStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#7aa2f7"))
-	dimStyle      = lipgloss.NewStyle().Faint(true)
-	messageStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#e0af68"))
-	selectedStyle = lipgloss.NewStyle().Bold(true)
 )
 
 // Model is the guide's Bubbletea model: the built guide plus the state a
@@ -36,6 +21,7 @@ type Model struct {
 	footer string
 	quit   bool
 	width  int
+	height int
 }
 
 var _ tea.Model = (*Model)(nil)
@@ -55,6 +41,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = message.Width
+		m.height = message.Height
 		return m, nil
 	case tea.KeyMsg:
 		return m, m.handleKey(message)
@@ -99,7 +86,7 @@ func (m *Model) cycleMode() {
 	} else {
 		m.mode = config.ViewList
 	}
-	m.footer = "view: " + m.mode
+	m.footer = "view: " + strings.ToUpper(m.mode)
 	if m.guide.Persist == nil {
 		return
 	}
@@ -224,172 +211,14 @@ func (m *Model) highlight() (Entry, bool) {
 	return matches[m.cursor].entry, true
 }
 
-func (m *Model) View() string {
-	var view strings.Builder
-	fmt.Fprintf(&view, "%s  %s\n", titleStyle.Render("herdr-utils which"), dimStyle.Render(fmt.Sprintf("%d / %d shown · %s view", m.shown(), m.total(), strings.ToUpper(m.mode))))
-	fmt.Fprintf(&view, "%s\n\n", filterStyle.Render("filter ❯ "+m.query))
-
-	if len(m.guide.Sources) == 0 {
-		view.WriteString(m.emptyState())
-	} else {
-		view.WriteString(m.columns())
+// highlightVisible is the selected entry together with the source it came from,
+// which the footer names.
+func (m *Model) highlightVisible() (visible, bool) {
+	matches := m.matches()
+	if m.cursor < 0 || m.cursor >= len(matches) {
+		return visible{}, false
 	}
-	view.WriteString("\n")
-	for _, note := range m.guide.Notes {
-		fmt.Fprintf(&view, "%s\n", dimStyle.Render(note))
-	}
-	if m.footer != "" {
-		fmt.Fprintf(&view, "%s\n", messageStyle.Render(m.footer))
-	}
-	fmt.Fprintf(&view, "%s\n", dimStyle.Render(m.hints()))
-	return view.String()
-}
-
-// emptyState is the answer to the default config: every source off, so the
-// screen names the switches instead of drawing a blank guide.
-func (m *Model) emptyState() string {
-	return strings.Join([]string{
-		"Every source is off.",
-		"",
-		"Enable one under which.sources in " + m.guide.ConfigPath + ":",
-		"  hs, gentle, custom, discovered",
-	}, "\n")
-}
-
-func (m *Model) hints() string {
-	enter := "enter show command"
-	if entry, ok := m.highlight(); ok && entry.Invokable() {
-		enter = "enter run action"
-	}
-	return enter + " · ↑↓ move · type filter · ctrl+t view · esc close"
-}
-
-func (m *Model) columns() string {
-	blocks := make([]string, 0, len(m.guide.Sources))
-	for index := range m.guide.Sources {
-		blocks = append(blocks, m.block(index))
-	}
-	return joinBlocks(blocks, m.width)
-}
-
-func (m *Model) block(index int) string {
-	source := m.guide.Sources[index]
-	entries := m.visibleEntries(index)
-
-	offset := 0
-	for previous := 0; previous < index; previous++ {
-		offset += len(m.visibleEntries(previous))
-	}
-
-	var block strings.Builder
-	fmt.Fprintf(&block, "%s\n", lipgloss.NewStyle().Foreground(source.Color()).Bold(true).Render(
-		strings.TrimSpace(source.Glyph()+" "+source.Name())+" "+countLabel(len(entries), len(source.Entries()), m.query != ""),
-	))
-
-	if len(entries) == 0 {
-		block.WriteString(dimStyle.Render(m.emptyBlock(source)))
-		block.WriteString("\n")
-		return block.String()
-	}
-
-	keyWidth := 0
-	for _, entry := range entries {
-		if width := len([]rune(entry.Key)); width > keyWidth {
-			keyWidth = width
-		}
-	}
-	for row, entry := range entries {
-		marker := "  "
-		if offset+row == m.cursor {
-			marker = "> "
-		}
-		switch m.mode {
-		case config.ViewList:
-			fmt.Fprintf(&block, "%s%s  %s\n", marker, entry.Description, dimStyle.Render(entry.Key))
-		default:
-			fmt.Fprintf(&block, "%s%s  %s\n", marker, selectedStyle.Render(pad(entry.Key, keyWidth)), entry.Description)
-		}
-	}
-	return block.String()
-}
-
-func (m *Model) emptyBlock(source Source) string {
-	if problem, ok := source.(ProblemSource); ok && problem.Problem() != "" {
-		return wrapText(problem.Problem(), blockTextWidth)
-	}
-	if m.query != "" {
-		return "(no match)"
-	}
-	return "(no entries)"
-}
-
-func countLabel(shown, total int, filtered bool) string {
-	if shown == total && !filtered {
-		return strconv.Itoa(total)
-	}
-	return fmt.Sprintf("%d / %d", shown, total)
-}
-
-func pad(value string, width int) string {
-	if missing := width - len([]rune(value)); missing > 0 {
-		return value + strings.Repeat(" ", missing)
-	}
-	return value
-}
-
-func wrapText(text string, width int) string {
-	words := strings.Fields(text)
-	if len(words) == 0 {
-		return ""
-	}
-	lines := make([]string, 0, 2)
-	line := words[0]
-	for _, word := range words[1:] {
-		if len(line)+1+len(word) > width {
-			lines = append(lines, line)
-			line = word
-			continue
-		}
-		line += " " + word
-	}
-	return strings.Join(append(lines, line), "\n")
-}
-
-// joinBlocks places the source columns side by side, wrapping into another row
-// of columns when the terminal is narrower than the columns together.
-func joinBlocks(blocks []string, width int) string {
-	const gutter = "  "
-	var rows [][]string
-	current := make([]string, 0, len(blocks))
-	currentWidth := 0
-
-	for _, block := range blocks {
-		blockWidth := lipgloss.Width(block)
-		extra := blockWidth
-		if len(current) > 0 {
-			extra += len(gutter)
-		}
-		if width > 0 && len(current) > 0 && currentWidth+extra > width {
-			rows = append(rows, current)
-			current = nil
-			currentWidth = 0
-			extra = blockWidth
-		}
-		if len(current) > 0 {
-			currentWidth += len(gutter)
-		}
-		current = append(current, block)
-		currentWidth += blockWidth
-	}
-	if len(current) > 0 {
-		rows = append(rows, current)
-	}
-
-	lines := make([]string, 0, len(rows))
-	for _, row := range rows {
-		lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Top, row...))
-	}
-	return strings.Join(lines, "\n")
+	return matches[m.cursor], true
 }
 
 // Run shows the guide until the user leaves it.

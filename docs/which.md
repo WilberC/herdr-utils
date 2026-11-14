@@ -73,10 +73,49 @@ From a shell the same screen is `bin/hu which` in the plugin root. In herdr's
 plugin manager the action is listed at `prefix+p` like any other plugin action,
 and action output lands in `herdr plugin log herdr-utils`.
 
-## Status in this build
+## The screen
 
-The command, its usage, its toggles and the action are shipped and tested. The
-screen itself — the grouped multi-column layout with a count per group, the live
-filter, the footer hints row and the `KEYS`/`LIST` views — is the next task in
-this release line. Until it lands `hu which` prints its usage and exits 2, so a
-script never mistakes "nothing drawn yet" for an open guide.
+The guide fills the pane with one framed popup, and every line of it is a
+role from one palette in `internal/which/theme.go` — the render code never
+names a colour, so the look changes in one file.
+
+The bands run in one order: the border with the product name set into it, the
+header, a rule, the filter row with its legend, the rule that opens the columns,
+the columns, the rule that closes them, then the two footer lines.
+
+- **The header** names the guide, how many sources it read, the live view
+  (`KEYS` or `LIST`) and the shown-over-total count. The frame hugs the content;
+  when the flow needs more rows than the pane has, the header adds the page.
+- **The filter row** shows the live query with a block cursor, and the legend of
+  chips: a key that needs the prefix first, a direct one, and the dim dash an
+  entry carries when it has no key of its own (no chip, because there is nothing
+  to bind). Long queries never push the legend onto
+  a second line: the legend is dropped first.
+- **The body** is the sources as columns — three on a wide terminal, two in the
+  middle, one when narrow — separated by rules that grow out of the horizontal
+  rules, with one blank row under the rule and the same gap between groups. Each
+  group is a gold glyph, its name in the source's colour and its count. Entries
+  hang off a dim guide: a chip whose slab covers the key plus one cell of padding
+  on each side, padded to the column's widest key, then one plain space and the
+  description, so every description in a column starts on one cell. An entry that
+  declares no key of its own gets no slab: a dim dash sits in the cell the key's
+  first letter would use. A group too tall for one column continues in the next
+  under `(cont.)`. The selected row keeps every one of those details: a tint
+  behind the row instead of a filled bar, an accent `▌` in the row's first cell,
+  the chip slab one step brighter, the description in bold and the dim text
+  lifted, so the row still says which key it is while it is selected.
+- **The footer** is two lines: what the selected entry does, the binding that
+  runs it (the only green on screen), its source and its kind, then the keys the
+  guide answers to. A status message — the view you just switched to, a command
+  the entry runs — rides the right edge of the detail line, so it never adds a
+  row. A hint that does not fit is left out, never wrapped.
+
+The `LIST` view is the same frame with one aligned table instead: dim
+`BINDING · ENTRY · SOURCE` headers over a full-width rule, a key chip, the entry
+filling every cell that is left and the source flush right against the inner
+padding, so the table spans the frame instead of leaving a stranded column. A filter that matches
+nothing, and the config where every source is off, both answer with one centred
+message instead of empty columns.
+The screen runs in [Bubbletea](https://github.com/charmbracelet/bubbletea);
+`internal/which/shot_test.go` renders it at several sizes to an ANSI file when
+`HU_WHICH_SHOT_DIR` is set, so the look can be reviewed as an image.
