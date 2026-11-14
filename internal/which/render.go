@@ -15,17 +15,15 @@ import (
 	"github.com/WilberC/herdr-utils/internal/config"
 )
 
-// The frame's geometry. frameRows counts every row the frame spends outside the
-// body: both borders, the header, the rule under it, the filter row, the rule
-// that opens the columns, the rule that closes them, the detail line and the
-// hints line.
 const (
-	frameRows     = 9
-	defaultWidth  = 100
-	minWidth      = 30
-	minBodyHeight = 3
-	maxChipWidth  = 14
-	minDescWidth  = 8
+	maxChipWidth = 14
+	minDescWidth = 8
+
+	// The pane the guide lays itself out in before Bubbletea reports the real one.
+	// A program sends its size first, so this is only the answer for a view drawn
+	// outside one.
+	defaultPaneWidth  = 100
+	defaultPaneHeight = 40
 )
 
 // The guide's own words: how the frame names itself, what the groups and the
@@ -74,67 +72,66 @@ type bodyRow struct {
 	height int // a group header's own height, spacer included
 }
 
-// View draws the guide: a framed popup with the header, the rule under it, the
-// filter row, the rule that opens the columns, the grouped columns, the rule
-// that closes them, and the two footer lines. It reads state only; every byte it
-// needs was built before the screen opened. The surface itself is the kit's; the
-// guide owns what it puts in it.
-func (m *Model) View() string {
-	width := m.width
+// pane is the size the guide draws in: the terminal's, or a readable default
+// before Bubbletea reports one.
+func (m *Model) pane() (int, int) {
+	width, height := m.width, m.height
 	if width <= 0 {
-		width = defaultWidth
+		width = defaultPaneWidth
 	}
-	if width < minWidth {
-		width = minWidth
+	if height <= 0 {
+		height = defaultPaneHeight
 	}
-	panel := frame.Frame{Title: theme.GoldBold.Render(productName), Width: width}
+	return width, height
+}
+
+// View draws the guide inside the kit's surface: the header, the rule under it,
+// the filter row and the rule that opens the columns sit on top; the rule that
+// closes them, the detail line, the hint bar and the notes are pinned to the
+// bottom; the body takes the rows between them and always opens and closes with
+// one blank row. The frame is the pane clamped to frame.Recommended and centred,
+// so it fills the popup it was opened in instead of hugging its content. It reads
+// state only; every byte it needs was built before the screen opened. The surface
+// itself is the kit's; the guide owns what it puts in it.
+func (m *Model) View() string {
+	paneWidth, paneHeight := m.pane()
+	panel := frame.Frame{
+		Title: theme.GoldBold.Render(productName),
+		Width: frame.Recommended.ClampWidth(paneWidth),
+	}
 	textWidth := panel.ContentWidth()
-	innerWidth := width - 2
+	widths := m.layoutWidths(panel.Width - 2)
+	hints := m.hintSet()
 
 	notes := make([]string, 0, len(m.guide.Notes))
 	for _, note := range m.guide.Notes {
-		notes = append(notes, theme.Muted.Render(text.Clip(note, textWidth)))
+		notes = append(notes, panel.Row(theme.Muted.Render(text.Clip(note, textWidth))))
 	}
 
-	bodyHeight := 0
-	if m.height > 0 {
-		bodyHeight = m.height - frameRows - len(notes)
-		if bodyHeight < minBodyHeight {
-			bodyHeight = minBodyHeight
-		}
+	// The header names the page, so it is the one top row that depends on the body:
+	// the surface needs the count of every other row to answer BodyRows first, and
+	// the header's row is filled in below.
+	top := []string{
+		"",
+		panel.Rule(),
+		panel.Row(m.filterLine(textWidth)),
+		frame.ColumnRule(widths, frame.TopTee),
+	}
+	bottom := []string{
+		frame.ColumnRule(widths, frame.BottomTee),
+		panel.Row(m.detailLine(textWidth)),
+		panel.Row(m.hintsLine(textWidth, hints)),
+	}
+	bottom = append(bottom, notes...)
+
+	surface := frame.Surface{Frame: panel, Size: frame.Recommended, Top: top, Bottom: bottom}
+	if m.mode != config.ViewList {
+		surface.Columns = widths
 	}
 
-	widths := m.layoutWidths(innerWidth)
-	body := m.body(panel, widths, bodyHeight)
-
-	var view strings.Builder
-	view.WriteString(panel.Top())
-	view.WriteString("\n")
-	view.WriteString(panel.Row(m.headerLine(textWidth, body)))
-	view.WriteString("\n")
-	view.WriteString(panel.Rule())
-	view.WriteString("\n")
-	view.WriteString(panel.Row(m.filterLine(textWidth)))
-	view.WriteString("\n")
-	view.WriteString(frame.ColumnRule(widths, frame.TopTee))
-	view.WriteString("\n")
-	for _, line := range body.lines {
-		view.WriteString(line)
-		view.WriteString("\n")
-	}
-	view.WriteString(frame.ColumnRule(widths, frame.BottomTee))
-	view.WriteString("\n")
-	view.WriteString(panel.Row(m.detailLine(textWidth)))
-	view.WriteString("\n")
-	view.WriteString(panel.Row(m.hintsLine(textWidth)))
-	view.WriteString("\n")
-	for _, note := range notes {
-		view.WriteString(panel.Row(note))
-		view.WriteString("\n")
-	}
-	view.WriteString(panel.Bottom())
-	view.WriteString("\n")
-	return view.String()
+	body := m.body(panel, widths, surface.BodyRows(paneHeight))
+	top[0] = panel.Row(m.headerLine(textWidth, body))
+	return surface.Popup(paneWidth, paneHeight, body.lines) + "\n"
 }
 
 // sides places right at the frame's right edge, or leaves it out. The guide
@@ -266,21 +263,36 @@ func (m *Model) detailLine(textWidth int) string {
 	return line.String()
 }
 
-// hintsLine names the keys the guide answers to, as chips. A hint that does not
-// fit is left out rather than wrapped.
-func (m *Model) hintsLine(textWidth int) string {
+// hintSet is the hints the guide answers to, in declaration order — the order is
+// the priority the bar pages through. The first one names what enter does for the
+// entry under the cursor.
+func (m *Model) hintSet() []chip.Hint {
 	enter := "show command"
 	if entry, ok := m.highlight(); ok && entry.Invokable() {
 		enter = "run action"
 	}
-	return chip.Hints(textWidth,
-		chip.Hint{Key: "enter", Label: enter},
-		chip.Hint{Key: "↑↓", Label: "move"},
-		chip.Hint{Key: "type", Label: "filter"},
-		chip.Hint{Key: "ctrl+t", Label: "view"},
-		chip.Hint{Key: "esc", Label: "close"},
-		chip.Hint{Key: "ctrl+u", Label: "clear"},
-	)
+	return []chip.Hint{
+		{Key: "enter", Label: enter},
+		{Key: "↑↓", Label: "move"},
+		{Key: "type", Label: "filter"},
+		{Key: "ctrl+t", Label: "view"},
+		{Key: "esc", Label: "close"},
+		{Key: "ctrl+u", Label: "clear"},
+	}
+}
+
+// hintsLine is the page of the hint bar the guide shows: every hint that fits,
+// and the paging chip naming chip.PageKey when some do not. A hint is never
+// dropped without it.
+func (m *Model) hintsLine(textWidth int, hints []chip.Hint) string {
+	return m.bar.Render(textWidth, hints...)
+}
+
+// hintWidth is the room the hint bar is drawn in: the frame's content width at
+// this pane, which is the width the bar pages against.
+func (m *Model) hintWidth() int {
+	paneWidth, _ := m.pane()
+	return frame.Frame{Width: frame.Recommended.ClampWidth(paneWidth)}.ContentWidth()
 }
 
 // layoutWidths is how the body is split: one column for the states that hold a
@@ -355,12 +367,12 @@ func (m *Model) columns(panel frame.Frame, widths []int, height int) bodyView {
 		flowed, fits = flowRows(rows, budget, columns)
 	}
 
-	// The frame hugs its content; a full terminal pages the flow instead, and the
-	// selection decides which page is on screen. One row of every column is the
-	// blank line that separates the opening rule from the first group.
-	lines, page, pages := budget+bodyGap, 1, 1
+	// The body pages the flow instead of squeezing it, and the selection decides
+	// which page is on screen. The blank row the surface keeps above the body is
+	// what separates the opening rule from the first group.
+	lines, page, pages := budget, 1, 1
 	if height > 0 && lines > height {
-		pageHeight := max(1, height-bodyGap)
+		pageHeight := max(1, height)
 		pageLines := max(1, columns*pageHeight-(columns-1))
 		start := 0
 		if cursorRow >= 0 && len(rows) > pageLines {
@@ -374,21 +386,7 @@ func (m *Model) columns(panel frame.Frame, widths []int, height int) bodyView {
 	for index, column := range flowed {
 		blocks[index] = m.columnLines(column, widths[index], len(column))
 	}
-	return bodyView{lines: frame.Grid(panel, gapColumns(blocks, widths, columns), widths, lines), page: page, pages: pages}
-}
-
-// bodyGap is the single blank row that separates the rule opening the columns
-// from the first group title, so the gap above a group is always one row.
-const bodyGap = 1
-
-// gapColumns puts that blank row on top of every column, so the columns start on
-// the same line as the group they carry.
-func gapColumns(blocks [][]string, widths []int, columns int) [][]string {
-	out := make([][]string, columns)
-	for index := range out {
-		out[index] = append([]string{strings.Repeat(" ", widths[index])}, blocks[index]...)
-	}
-	return out
+	return bodyView{lines: frame.Grid(panel, blocks, widths, lines), page: page, pages: pages}
 }
 
 // flowRows pours the rows into at most columns columns of budget lines each. It
@@ -606,8 +604,7 @@ func (m *Model) listBody(panel frame.Frame, width, height int) bodyView {
 		entryWidth = max(minDescWidth, width-chipWidth-sourceWidth-6)
 	}
 
-	lines := make([]string, 0, len(rows)+3)
-	lines = append(lines, "")
+	lines := make([]string, 0, len(rows)+2)
 	lines = append(lines, m.listHeader(chipWidth, entryWidth, sourceWidth))
 	lines = append(lines, theme.Quiet.Render(strings.Repeat(frame.Horizontal, width)))
 

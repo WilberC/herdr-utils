@@ -9,6 +9,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/WilberC/tui-kit/chip"
+
 	"github.com/WilberC/herdr-utils/internal/config"
 )
 
@@ -355,5 +357,97 @@ func TestTheGuideStartsInTheConfiguredView(t *testing.T) {
 
 	if got := New(guide).Mode(); got != config.ViewList {
 		t.Fatalf("Mode = %q, want the saved %q", got, config.ViewList)
+	}
+}
+
+// TestTabPagesTheHintBarAndWraps pins S6 (tui-kit): a hint that does not fit is
+// reachable — the bar ends with the paging chip, the paging key moves to the next
+// page, and the last page wraps back to the first.
+func TestTabPagesTheHintBarAndWraps(t *testing.T) {
+	m := size(New(shotGuide()), 80, 24)
+
+	first := m.View()
+	if !strings.Contains(plainText(first), chip.PageKey+"  more 1/2") {
+		t.Fatalf("a narrow guide does not say the hints are paged:\n%s", first)
+	}
+	if strings.Contains(plainText(first), "clear") {
+		t.Fatalf("the first page already shows the last hint, so the bar did not page:\n%s", first)
+	}
+
+	press(m, tea.KeyMsg{Type: tea.KeyTab})
+	second := m.View()
+	if !strings.Contains(plainText(second), "more 2/2") {
+		t.Fatalf("the paging key did not move to the next page:\n%s", second)
+	}
+	if !strings.Contains(plainText(second), "clear") {
+		t.Fatalf("the second page does not show the hints that did not fit:\n%s", second)
+	}
+
+	press(m, tea.KeyMsg{Type: tea.KeyTab})
+	if wrapped := plainText(m.View()); !strings.Contains(wrapped, "more 1/2") {
+		t.Fatalf("the paging key does not wrap from the last page back to the first:\n%s", wrapped)
+	}
+}
+
+// TestTabDoesNotTypeIntoTheFilter pins the paging key against the filter: it is
+// consumed before the rune branch, so it pages instead of narrowing the list.
+func TestTabDoesNotTypeIntoTheFilter(t *testing.T) {
+	m := size(New(shotGuide()), 80, 24)
+	before := m.shown()
+
+	press(m, tea.KeyMsg{Type: tea.KeyTab})
+	press(m, tea.KeyMsg{Type: tea.KeyTab})
+	press(m, tea.KeyMsg{Type: tea.KeyTab})
+
+	if strings.TrimSpace(m.query) != "" {
+		t.Fatalf("query = %q, want tab to leave the filter empty", m.query)
+	}
+	if m.shown() != before {
+		t.Fatalf("shown = %d, want the %d entries the empty filter matched", m.shown(), before)
+	}
+	if view := m.View(); !strings.Contains(view, filterPrompt) {
+		t.Fatalf("the filter row lost its prompt after tab:\n%s", view)
+	}
+}
+
+// TestANewHintSetStartsOnItsFirstPage pins the page against the hint set: a page
+// kept from a set that is gone would show a position the bar no longer has, so
+// switching the view, filtering, or selecting an action returns to page one.
+func TestANewHintSetStartsOnItsFirstPage(t *testing.T) {
+	for name, change := range map[string]func(*Model){
+		"the view switch":   func(m *Model) { press(m, tea.KeyMsg{Type: tea.KeyCtrlT}) },
+		"a live filter":     func(m *Model) { press(m, typeKey("prefix")) },
+		"another selection": func(m *Model) { press(m, tea.KeyMsg{Type: tea.KeyDown}) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := size(New(shotGuide()), 80, 24)
+			press(m, tea.KeyMsg{Type: tea.KeyTab})
+			if !strings.Contains(plainText(m.View()), "more 2/2") {
+				t.Fatalf("the guide is not on the second page before the change:\n%s", m.View())
+			}
+
+			change(m)
+
+			if view := plainText(m.View()); strings.Contains(view, "more 2/") {
+				t.Fatalf("%s kept a page from the previous hint set:\n%s", name, view)
+			}
+		})
+	}
+}
+
+// TestTabDoesNothingWhenEverythingFits pins the other half of the paging rule: a
+// wide footer shows every hint on one line, with no paging chip, and the paging
+// key leaves the screen untouched.
+func TestTabDoesNothingWhenEverythingFits(t *testing.T) {
+	m := size(New(shotGuide()), 180, 50)
+	before := m.View()
+	if strings.Contains(plainText(before), "more ") {
+		t.Fatalf("a footer that fits still shows a paging chip:\n%s", before)
+	}
+
+	press(m, tea.KeyMsg{Type: tea.KeyTab})
+
+	if after := m.View(); after != before {
+		t.Fatalf("the paging key redrew a footer that fits:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }

@@ -118,13 +118,11 @@ func TestTheFrameFitsEveryWindow(t *testing.T) {
 		"every source":  func(m *Model) {},
 		"no sources":    func(m *Model) { m.guide = Guide{} },
 		"problem block": func(m *Model) {},
+		"paged hints":   func(m *Model) { m.Update(tea.KeyMsg{Type: tea.KeyTab}) },
 	}
 	for name, setup := range states {
 		for _, window := range []struct{ width, height int }{{180, 50}, {140, 40}, {80, 24}, {60, 20}} {
 			m := New(shotGuide())
-			if window.width == 80 && window.height == 24 {
-				m = New(shotGuide())
-			}
 			setup(m)
 			view := size(m, window.width, window.height).View()
 			lines := strings.Split(strings.TrimSuffix(view, "\n"), "\n")
@@ -141,17 +139,18 @@ func TestTheFrameFitsEveryWindow(t *testing.T) {
 	}
 }
 
-// TestTheFrameIsClosedAndEven pins the geometry the eye notices: every line is
-// framed, the rules and the column rules line up on one cell, and a row never
-// ends in spaces or repeats a space before a separator.
+// TestTheFrameIsClosedAndEven pins the geometry the eye notices: every row of the
+// clamped frame is framed and exactly as wide as the frame, the rules and the
+// column rules line up on one cell, and a row never ends in spaces or repeats a
+// space before a separator.
 func TestTheFrameIsClosedAndEven(t *testing.T) {
 	for _, window := range []struct{ width, height int }{{180, 50}, {140, 40}, {80, 24}} {
-		view := size(New(shotGuide()), window.width, window.height).View()
-		lines := strings.Split(strings.TrimSuffix(view, "\n"), "\n")
+		lines := frameLines(size(New(shotGuide()), window.width, window.height).View())
+		frameWidth := frame.Recommended.ClampWidth(window.width)
 
 		for index, line := range lines {
-			if width := lipgloss.Width(line); width != window.width {
-				t.Fatalf("%dx%d: line %d is %d cells wide, want %d:\n%s", window.width, window.height, index, width, window.width, line)
+			if width := lipgloss.Width(line); width != frameWidth {
+				t.Fatalf("%dx%d: line %d is %d cells wide, want the frame's %d:\n%s", window.width, window.height, index, width, frameWidth, line)
 			}
 			if !strings.HasPrefix(line, "│") && !strings.HasPrefix(line, "╭") && !strings.HasPrefix(line, "├") && !strings.HasPrefix(line, "╰") {
 				t.Fatalf("%dx%d: line %d is not framed: %q", window.width, window.height, index, line)
@@ -545,5 +544,109 @@ func TestUnsetChipsArePaddedLikeKeys(t *testing.T) {
 	}
 	if texts["Dashboard"] != texts["Open the bar"] {
 		t.Fatalf("descriptions start at %d for a bound key and %d for an unset one", texts["Dashboard"], texts["Open the bar"])
+	}
+}
+
+// frameLines splits a rendered pane into the rows of the frame itself: the blank
+// rows the centring adds around a clamped frame are dropped and the centring's
+// left offset is trimmed, so a test measures the frame instead of its placement.
+func frameLines(view string) []string {
+	lines := make([]string, 0, strings.Count(view, "\n")+1)
+	for _, line := range strings.Split(strings.TrimSuffix(view, "\n"), "\n") {
+		if strings.TrimSpace(plainText(line)) == "" {
+			continue
+		}
+		lines = append(lines, strings.TrimLeft(line, " "))
+	}
+	return lines
+}
+
+// TestTheFrameIsAsTallAsTheClampedPane pins S7 (tui-kit): a short guide in a tall
+// pane is drawn at the clamp, not at the height of its content, so the footer is
+// never left floating with empty pane below it.
+func TestTheFrameIsAsTallAsTheClampedPane(t *testing.T) {
+	guide := testGuide(group{name: NameHS, entries: hsEntries()})
+	lines := frameLines(size(New(guide), 140, 50).View())
+
+	if want := frame.Recommended.MaxHeight; len(lines) != want {
+		t.Fatalf("a three-row guide in a 50-row pane is %d rows tall, want the clamped %d:\n%s",
+			len(lines), want, strings.Join(lines, "\n"))
+	}
+	if !strings.HasPrefix(plainText(lines[0]), frame.TopLeft) || !strings.HasPrefix(plainText(lines[len(lines)-1]), frame.BottomLeft) {
+		t.Fatalf("the centered frame does not open and close with its borders:\n%s", strings.Join(lines, "\n"))
+	}
+
+	// The pane a typical popup opens (74% x 62% of 240x60) is what the frame fills:
+	// below the maximum, the frame is exactly the pane.
+	tall := frameLines(size(New(guide), 140, 37).View())
+	if len(tall) != 37 {
+		t.Fatalf("the frame is %d rows tall in a 37-row pane, want it to fill the pane", len(tall))
+	}
+}
+
+// TestTheFooterIsPinnedToTheLastInnerRows pins the anchoring rule: the footer is
+// the last inner rows of the frame — the closing column rule, the detail line and
+// the hint bar — whatever the body above it holds.
+func TestTheFooterIsPinnedToTheLastInnerRows(t *testing.T) {
+	lines := frameLines(size(New(shotGuide()), 140, 40).View())
+	inner := lines[1 : len(lines)-1]
+
+	closing := plainText(inner[len(inner)-3])
+	if !strings.Contains(closing, frame.BottomTee) {
+		t.Fatalf("the body does not close above the footer: %q", closing)
+	}
+	detail := plainText(inner[len(inner)-2])
+	if !strings.Contains(detail, "Command bar") || !strings.Contains(detail, "prefix+k") {
+		t.Fatalf("the detail line is not the second inner row from the bottom: %q", detail)
+	}
+	hints := plainText(inner[len(inner)-1])
+	if !strings.Contains(hints, "show command") {
+		t.Fatalf("the hint bar is not the last inner row: %q", hints)
+	}
+}
+
+// TestTheBodyKeepsItsPaddingRows pins S7's padding: the body always opens and
+// closes with one blank row, and in a column grid those rows keep the separators,
+// so the column rule runs unbroken from the opening joint to the closing one.
+func TestTheBodyKeepsItsPaddingRows(t *testing.T) {
+	lines := frameLines(size(New(shotGuide()), 140, 40).View())
+
+	opened, closed := -1, -1
+	for index, line := range lines {
+		if plain := plainText(line); strings.Contains(plain, frame.TopTee) {
+			opened = index
+		} else if strings.Contains(plain, frame.BottomTee) {
+			closed = index
+		}
+	}
+	if opened < 0 || closed < 0 || closed < opened+4 {
+		t.Fatalf("the column grid is opened at %d and closed at %d:\n%s", opened, closed, strings.Join(lines, "\n"))
+	}
+
+	for name, index := range map[string]int{"the body's first row": opened + 1, "the body's last row": closed - 1} {
+		line := lines[index]
+		inner := strings.TrimSuffix(strings.TrimPrefix(plainText(line), "│"), "│")
+		if strings.Trim(strings.ReplaceAll(inner, frame.Vertical, ""), " ") != "" {
+			t.Fatalf("%s is not blank: %q", name, line)
+		}
+		if want := strings.Count(plainText(lines[opened]), frame.TopTee) + 2; strings.Count(plainText(line), frame.Vertical) != want {
+			t.Fatalf("%s does not keep the column separators: %q", name, line)
+		}
+	}
+}
+
+// TestTheFrameNeverLeavesThePane pins the width contract with the clamp: at every
+// window the pane offers, no line is wider than the pane and the frame never grows
+// past the recommended maximum.
+func TestTheFrameNeverLeavesThePane(t *testing.T) {
+	for _, window := range []struct{ width, height int }{{180, 50}, {140, 37}, {140, 40}, {80, 24}, {60, 20}} {
+		lines := frameLines(size(New(shotGuide()), window.width, window.height).View())
+		want := frame.Recommended.ClampWidth(window.width)
+		for index, line := range lines {
+			if width := lipgloss.Width(line); width != want {
+				t.Fatalf("%dx%d: frame row %d is %d cells wide, want the clamped %d:\n%s",
+					window.width, window.height, index, width, want, line)
+			}
+		}
 	}
 }

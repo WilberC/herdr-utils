@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/WilberC/tui-kit/frame"
 )
 
 type manifestAction struct {
@@ -285,4 +288,51 @@ func compareVersions(left, right string) int {
 		}
 	}
 	return 0
+}
+
+// TestPluginPaneSizeFitsTheFrameBounds pins the popup size against the frame it
+// opens: the guide draws itself inside tui-kit's recommended bounds (60..160
+// wide, 16..40 tall) and fills the pane it is given, so a herdr popup that lands
+// inside those bounds fills with no empty band below the footer. A popup past
+// the maximum leaves the frame room it cannot use; one below the minimum makes
+// the frame fall back to the pane instead of the range.
+func TestPluginPaneSizeFitsTheFrameBounds(t *testing.T) {
+	document := parseManifest(t, readManifestBytes(t))
+	if len(document.Panes) != 1 {
+		t.Fatalf("manifest panes = %#v, want exactly the which pane", document.Panes)
+	}
+	pane := document.Panes[0]
+
+	for _, terminal := range []struct{ width, height int }{{180, 50}, {190, 60}, {240, 60}} {
+		width, err := percentOf(pane.Width, terminal.width)
+		if err != nil {
+			t.Fatalf("pane width %q: %v", pane.Width, err)
+		}
+		height, err := percentOf(pane.Height, terminal.height)
+		if err != nil {
+			t.Fatalf("pane height %q: %v", pane.Height, err)
+		}
+		if width < frame.Recommended.MinWidth || width > frame.Recommended.MaxWidth {
+			t.Fatalf("at %dx%d the popup is %d cells wide, want it inside %d..%d so the frame fills it",
+				terminal.width, terminal.height, width, frame.Recommended.MinWidth, frame.Recommended.MaxWidth)
+		}
+		if height < frame.Recommended.MinHeight || height > frame.Recommended.MaxHeight {
+			t.Fatalf("at %dx%d the popup is %d rows tall, want it inside %d..%d so the frame fills it",
+				terminal.width, terminal.height, height, frame.Recommended.MinHeight, frame.Recommended.MaxHeight)
+		}
+	}
+}
+
+// percentOf resolves the manifest's "<n>%" size against a terminal dimension,
+// the way herdr sizes a popup pane.
+func percentOf(value string, total int) (int, error) {
+	digits, ok := strings.CutSuffix(value, "%")
+	if !ok {
+		return 0, fmt.Errorf("%q is not a percentage", value)
+	}
+	percent, err := strconv.Atoi(digits)
+	if err != nil {
+		return 0, fmt.Errorf("%q is not a percentage: %w", value, err)
+	}
+	return total * percent / 100, nil
 }

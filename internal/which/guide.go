@@ -7,6 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/WilberC/tui-kit/chip"
+
 	"github.com/WilberC/herdr-utils/internal/config"
 )
 
@@ -22,6 +24,10 @@ type Model struct {
 	quit   bool
 	width  int
 	height int
+
+	// bar is the hint bar's page. Every keystroke that changes what the footer
+	// means sends it back to the first page.
+	bar chip.HintBar
 }
 
 var _ tea.Model = (*Model)(nil)
@@ -50,6 +56,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(key tea.KeyMsg) tea.Cmd {
+	// tab pages the hint bar. It is consumed before the rune branch, so the
+	// paging key never types into the filter.
+	if key.String() == chip.PageKey {
+		m.bar.Next(m.hintWidth(), m.hintSet()...)
+		return nil
+	}
 	switch key.String() {
 	case "ctrl+c", "esc":
 		m.quit = true
@@ -81,6 +93,7 @@ func (m *Model) handleKey(key tea.KeyMsg) tea.Cmd {
 // cycleMode flips the KEYS/LIST view and records it in the plugin config, so the
 // guide opens the way the user left it.
 func (m *Model) cycleMode() {
+	m.bar.Page = 0
 	if m.mode == config.ViewList {
 		m.mode = config.ViewKeys
 	} else {
@@ -124,6 +137,7 @@ func (m *Model) activate() tea.Cmd {
 }
 
 func (m *Model) move(delta int) {
+	m.bar.Page = 0
 	total := m.shown()
 	if total == 0 {
 		m.cursor = 0
@@ -140,6 +154,7 @@ func (m *Model) move(delta int) {
 }
 
 func (m *Model) setQuery(query string) {
+	m.bar.Page = 0
 	m.query = query
 	if total := m.shown(); m.cursor >= total {
 		m.cursor = total - 1

@@ -42,6 +42,15 @@ id = "which"
 title = "Keybinding guide"
 description = "The herdr keybinding guide, grouped by source"
 placement = "popup"
-width = "74%"
+# The frame draws itself inside tui-kit's recommended bounds (60..160 wide,
+# 16..40 tall) and fills whatever popup it gets, so the pane is sized in the
+# middle of that range instead of hugging a guessed content height:
+# 66% x 62% is about 118x31 on a 180x50 terminal and 158x37 on a 240x60 one,
+# both inside the bounds, so the frame fills the popup with no empty band below
+# its footer and no unused width beside it. 74%, the width this pane shipped
+# with, is 177 cells on a 240-wide terminal — past the 160-cell maximum, which
+# leaves a band the frame cannot use. A smaller terminal wins over the minimum:
+# the frame is never wider or taller than its pane.
+width = "66%"
 height = "62%"
 command = ["bin/hu", "which"]

@@ -75,8 +75,7 @@ and action output lands in `herdr plugin log herdr-utils`.
 
 ## The screen
 
-The guide fills the pane with one framed popup. The look it wears is
-[`tui-kit`](https://github.com/WilberC/tui-kit)'s: the palette, the frame and its
+The guide fills the pane with one framed popup. The look it wears is[`tui-kit`](https://github.com/WilberC/tui-kit)'s: the palette, the frame and its
 rules, the chips and chips bar, the tree guide and the text fitting all come from
 that module, and its
 [DESIGN.md](https://github.com/WilberC/tui-kit/blob/main/DESIGN.md) is the
@@ -91,9 +90,21 @@ The bands run in one order: the border with the product name set into it, the
 header, a rule, the filter row with its legend, the rule that opens the columns,
 the columns, the rule that closes them, then the two footer lines.
 
+The frame is sized, not guessed. Its width and height are the pane clamped to
+tui-kit's recommended range — 60 to 160 cells wide, 16 to 40 rows tall — and a
+smaller pane wins, because a frame never outgrows the pane showing it. The result
+is centred in the pane and is always as tall as that clamp, never as tall as its
+content, so the footer sits on the frame's last rows instead of leaving empty
+pane below it. The body takes the rows between the header and the footer and
+always keeps one blank row at each end, so two sections stay distinguishable; the
+column rules run unbroken through those rows and through the spare room below the
+content. `herdr-plugin.toml` sizes this popup at 66% x 62%, which lands inside
+the range on a typical terminal (about 118x31 at 180x50, 158x37 at 240x60), so
+the frame fills it.
+
 - **The header** names the guide, how many sources it read, the live view
-  (`KEYS` or `LIST`) and the shown-over-total count. The frame hugs the content;
-  when the flow needs more rows than the pane has, the header adds the page.
+  (`KEYS` or `LIST`) and the shown-over-total count. When the flow needs more
+  rows than the body has, the header adds the page.
 - **The filter row** shows the live query with a block cursor, and the legend of
   chips: a key that needs the prefix first, a direct one, and the dim dash an
   entry carries when it has no key of its own (no chip, because there is nothing
@@ -116,7 +127,11 @@ the columns, the rule that closes them, then the two footer lines.
   runs it (the only green on screen), its source and its kind, then the keys the
   guide answers to. A status message — the view you just switched to, a command
   the entry runs — rides the right edge of the detail line, so it never adds a
-  row. A hint that does not fit is left out, never wrapped.
+  row. The hint bar **pages** instead of hiding a hint: when they all fit it is
+  one line, and when they do not it ends with `tab` and the position
+  (`more 1/2`); `tab` shows the next page and wraps around, and it never types
+  into the filter. Paging starts again from the first page whenever the footer
+  changes meaning: another view, a live filter, another selected entry.
 
 The `LIST` view is the same frame with one aligned table instead: dim
 `BINDING · ENTRY · SOURCE` headers over a full-width rule, a key chip, the entry
@@ -125,5 +140,6 @@ padding, so the table spans the frame instead of leaving a stranded column. A fi
 nothing, and the config where every source is off, both answer with one centred
 message instead of empty columns.
 The screen runs in [Bubbletea](https://github.com/charmbracelet/bubbletea);
-`internal/which/shot_test.go` renders it at several sizes to an ANSI file when
-`HU_WHICH_SHOT_DIR` is set, so the look can be reviewed as an image.
+`internal/which/shot_test.go` renders it at several sizes — a tall pane, a short
+guide in a popup-sized pane, both views and the paged hint bar — to an ANSI file
+when `HU_WHICH_SHOT_DIR` is set, so the look can be reviewed as an image.

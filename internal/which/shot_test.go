@@ -43,6 +43,17 @@ func TestShotHarness(t *testing.T) {
 		{name: "140", width: 140, height: 40},
 		{name: "80", width: 80, height: 24},
 		{name: "60", width: 60, height: 20},
+		// The owner's screenshot (tui-kit L7): a short guide in a 74% x 62% popup
+		// on a 170x60 terminal, where the frame used to hug its content and leave
+		// half the pane empty below the footer.
+		{name: "short-124x37", width: 124, height: 37, setup: func(m *Model) {
+			m.guide = shortGuide()
+			m.cursor = 0
+		}},
+		{name: "tall-140x50", width: 140, height: 50},
+		{name: "paged-80", width: 80, height: 24, setup: func(m *Model) {
+			m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		}},
 		{name: "filtered", width: 180, height: 50, setup: func(m *Model) {
 			m.Update(typeKey("prefix+p"))
 			m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -79,6 +90,22 @@ func TestShotHarness(t *testing.T) {
 		if err := os.WriteFile(path, []byte(m.View()), 0o644); err != nil {
 			t.Fatalf("write %s: %v", path, err)
 		}
+	}
+}
+
+// shortGuide is the small guide the owner's screenshot shows: a few bindings in
+// two groups, short enough that a content-hugging frame used to leave most of the
+// popup empty below its footer.
+func shortGuide() Guide {
+	return Guide{
+		ConfigPath: "/home/u/.config/herdr/plugins/config/herdr-utils/config.json",
+		View:       config.ViewKeys,
+		Sources: []Source{
+			group{name: NameHS, glyph: glyphHS, color: colorHS, toggle: "which.sources.hs", entries: hsEntries()[:3]},
+			group{name: NameCustom, glyph: glyphCustom, color: colorCustom, toggle: "which.sources.custom", entries: []Entry{
+				{Key: "prefix+g", Description: "Git status", Kind: KindManual, Command: "fish -c lazygit"},
+			}},
+		},
 	}
 }
 
