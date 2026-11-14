@@ -269,6 +269,31 @@ func TestHoverTintsTheRowFaintlyAndTheSelectionWins(t *testing.T) {
 	if strings.Contains(row, paintOf(theme.HoverBG)) {
 		t.Fatalf("the hover tint competed with the selection:\n%q", row)
 	}
+
+	// The LIST reserves the source column on the row's edge, so the pointer's tint
+	// must survive it: the air cell after the source is the row's own background, so
+	// the tint reaches the row's last cell instead of stopping inside the source.
+	list := size(New(shotGuide()), 140, 40)
+	press(list, tea.KeyMsg{Type: tea.KeyCtrlT})
+	list.View()
+	hovered, ok = list.zones.Find(rowZone(1))
+	if !ok {
+		t.Fatal("the LIST render recorded no zone for entry 1")
+	}
+	hoverX, hoverY = centre(hovered)
+	hoverAt(list, hoverX, hoverY)
+
+	listRow := lineWith(list.View(), "Plugin manager")
+	if listRow == "" {
+		t.Fatal("the hovered LIST entry has no row")
+	}
+	after := strings.TrimPrefix(listRow[strings.Index(listRow, "HS")+len("HS"):], "\x1b[0m")
+	if !strings.HasPrefix(after, paintOf(theme.HoverBG)) {
+		t.Fatalf("the source column's fill is not the hover tint, so the tint stops at the source:\n%q", listRow)
+	}
+	if tail := strings.Trim(plainText(after), " │"); tail != "" {
+		t.Fatalf("the row draws %q after the source column, so the tint does not reach its edge", tail)
+	}
 }
 
 // TestTheWheelMovesTheSelectionAndPages pins S8's wheel rule: the wheel moves the

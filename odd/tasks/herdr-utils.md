@@ -65,6 +65,7 @@ installs them. Command: `hu`. Sibling of
 | T7 | S6 | worker | pending | Migrate the `hu which` render layer to `github.com/WilberC/tui-kit` v0.1.0 (tui-kit T3, S4): compose `theme`/`text`/`chip`/`frame` and delete the private copies. Screens render as before. |
 | T8 | S6,S7 | worker | pending | tui-kit v0.2.0 in `hu which`: paged hint bar (`chip.HintBar`, `chip.PageKey`) and the pinned-footer frame (`frame.Surface`/`frame.Size`) replacing the content-hugging height arithmetic, with the popup sized inside the frame's bounds (tui-kit T6, S6, S7). |
 | T9 | S6 | worker | pending | tui-kit v0.3.0 in `hu which`: mouse support (a click selects, a double click runs what enter runs, hover previews, the wheel moves and pages, the paging chip is `tab`, the header KEYS/LIST names are clickable) and one copy key (`ctrl+y`, OSC 52), plus the kit's self-resetting hint bar, `text.JoinDropRight`, `list.Entry` and `Surface.PopupZones` (tui-kit T9, S8, S9). |
+| T10 | S4 | worker | pending | tui-kit v0.4.0 in `hu which`: accent chips (`list.Roles.ChipAccent`, no `rolesAt` override), the LIST source column moved into `list.Entry.Trailing`/`TrailingWidth` and left-aligned under `SOURCE`, the kit's `text.JoinDropRight` gutter instead of hand-padded right sides, and `frame.Surface.BodyRowsFor` for the header's page instead of a placeholder row (tui-kit T12, S12). |
 
 ## Log
 
@@ -160,3 +161,41 @@ installs them. Command: `hu`. Sibling of
   `Description`; `list.Roles` offers no accent chip role, so `rolesAt` restores
   `theme.ChipAccent` over the kit's `ChipText` to keep the keys accent-coloured.
 - L12 (2026-11-14): parent review restored the muted description for entries that declare no key (descriptionRole, shared by KEYS and LIST), lost in the list.Entry move; pinned by TestTheUnboundActionKeepsItsDescriptionMuted.
+- L13 (2026-11-14): tui-kit v0.4.0: accent chips, trailing source column, BodyRowsFor; workarounds deleted (tui-kit T12, S12).
+  `go.mod` takes `github.com/WilberC/tui-kit v0.4.0` (`go get`, `go mod tidy`).
+  (c) `rolesAt` no longer overrides `Roles.Chip`; the key chip is drawn with
+  `chip.Cell(roles.ChipAccent, …)`, so the guide's accent follows the kit's two
+  surfaces and the chip keeps its accent label on the selection, while an entry
+  with no key keeps `chip.UnsetCell(roles.Muted, …)`. (d) the leading `" "` is
+  gone from every `text.JoinDropRight` right side (header, filter, both detail
+  lines): the kit's one-cell gutter replaces the hand padding, and the header's
+  zone guard asks for that same cell. (b) the LIST source column is
+  `list.Entry.Trailing` with `TrailingWidth` set to the widest visible source
+  label (or `SOURCE`) plus one cell of air; the hand-built column and its
+  `tableGap`/`entryWidth` arithmetic are deleted, so the values are left-aligned
+  on the cell the `SOURCE` header names and the row's tint reaches its last
+  cell. (e) `View` measures the body with `surface.BodyRowsFor(paneHeight,
+  len(top)+headerRows, len(bottom))`, builds the header with the page it was
+  given, and no longer holds a placeholder top row or rewrites `top[0]` after
+  `canvas`. Evidence: 16 ANSI states captured before
+  (`/tmp/hu-v5/before/b-*.ansi`, v0.3.0) and after (`/tmp/hu-v5/after/a-*.ansi`)
+  with `HU_WHICH_SHOT_DIR`; `cmp` per pair — `empty` and `nomatch` byte-
+  identical; every KEYS state byte-identical once the selected chip's foreground
+  is normalised from `theme.TextOnSelection` to `theme.ColorAccent`, which is
+  (c)'s own change (`theme.ChipAccentOnSelection`), not drift; `list`,
+  `list-140` and `list-80` differ only inside the source column (list: cells
+  157–168 of 170, list-140: 127–138 of 140, list-80: 67–78 of 80 — the reserved
+  column start to the row edge), every line keeping its exact width. No other
+  state changed. PNG review with `freeze`: `/tmp/hu-v5/png/after-list.png`,
+  `after-list-140.png`, `after-list-80.png` — the `SOURCE` header sits on the
+  values' cell, the values are left-aligned, and the selected row's tint runs
+  through the column to the row's inner padding edge. Tests:
+  `TestTheLISTViewIsAnAlignedTable` pins the left-aligned column (one start cell
+  for every value, the header on that cell, the shorter label ending first, no
+  overrun of the inner padding), `TestTheSelectedRowKeepsItsDetail` now reads
+  the chip's slab from `theme.ChipAccentOnSelection`, and
+  `TestHoverTintsTheRowFaintlyAndTheSelectionWins` proves a hovered LIST row's
+  fill after the source is the row's own background with nothing drawn after it.
+  GREEN: `TMPDIR=/tmp/hu-tmp go test ./... -count=1` 186 top-level tests and 85
+  subtests pass across the 9 packages, 1 skipped (`TestShotHarness`), 0
+  failures; `go vet ./...` clean; `gofmt -l cmd internal` empty.

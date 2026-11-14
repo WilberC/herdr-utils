@@ -123,8 +123,9 @@ the frame fills it.
   beside it stands out. A group too tall for one column continues in the next
   under `(cont.)`. The selected row keeps every one of those details: a tint
   behind the row instead of a filled bar, an accent `▌` in the row's first cell,
-  the chip slab one step brighter, the description in bold and the dim text
-  lifted, so the row still says which key it is while it is selected.
+  the chip slab one step brighter while the key keeps its accent colour, the
+  description in bold and the dim text lifted, so the row still says which key it
+  is while it is selected.
 - **The footer** is two lines: what the selected entry does, the binding that
   runs it (the only green on screen), its source and its kind, then the keys the
   guide answers to. A status message — the view you just switched to, a command
@@ -138,8 +139,11 @@ the frame fills it.
 
 The `LIST` view is the same frame with one aligned table instead: dim
 `BINDING · ENTRY · SOURCE` headers over a full-width rule, a key chip, the entry
-filling every cell that is left and the source flush right against the inner
-padding, so the table spans the frame instead of leaving a stranded column. A filter that matches
+filling every cell that is left and the source in a column reserved against the
+row's edge. That column is left-aligned — every value starts on the cell the
+`SOURCE` header names, with one cell of air after the longest label — so a short
+source does not drift to the edge and the selection or hover tint runs through
+the column to the row's last cell. A filter that matches
 nothing, and the config where every source is off, both answer with one centred
 message instead of empty columns.
 

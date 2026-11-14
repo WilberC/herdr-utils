@@ -178,7 +178,9 @@ func TestTheSelectedRowKeepsItsDetail(t *testing.T) {
 
 	tint := paintOf(theme.TextOnSelection)
 	edge := paintOf(theme.SelectionEdge)
-	slab := paintOf(theme.ChipOnSelection)
+	// The accent chip keeps its accent on the tint (tui-kit v0.4.0): the slab is
+	// the brighter surface, the label stays the accent colour.
+	slab := paintOf(theme.ChipAccentOnSelection)
 
 	selected := func(view string) string {
 		t.Helper()
@@ -374,7 +376,8 @@ func TestTheLISTViewIsAnAlignedTable(t *testing.T) {
 		}
 	}
 
-	chipAt, sourceEnd, width := -1, -1, 0
+	chipAt, sourceAt, width := -1, -1, 0
+	ends := map[string]int{}
 	for _, line := range strings.Split(view, "\n") {
 		if strings.Contains(line, theme.Dot()) {
 			continue // the footer names the selection too; the table is the body
@@ -395,31 +398,50 @@ func TestTheLISTViewIsAnAlignedTable(t *testing.T) {
 		} else if at != chipAt {
 			t.Fatalf("the chip column starts at %d and %d, want one column:\n%s", chipAt, at, view)
 		}
-		// The source is flush right: every row ends on the same cell, the last one
-		// inside the frame's inner padding.
-		end := -1
-		for _, name := range []string{"HS", "CUSTOM"} {
-			if index := strings.LastIndex(plain, name); index >= 0 {
-				end = lipgloss.Width(plain[:index]) + len(name)
+		// The source column is reserved and left-aligned: every value starts on the
+		// same cell, so a short label does not drift toward the row's edge.
+		start, name := -1, ""
+		for _, candidate := range []string{"HS", "CUSTOM"} {
+			if index := strings.LastIndex(plain, candidate); index >= 0 {
+				start, name = lipgloss.Width(plain[:index]), candidate
 			}
 		}
-		if end < 0 {
+		if start < 0 {
 			t.Fatalf("the LIST row does not name its source: %q", plain)
 		}
-		if end != width-2 {
-			t.Fatalf("the source ends at %d of %d, want it flush against the inner padding (cell %d):\n%s", end, width, width-3, view)
+		if sourceAt == -1 {
+			sourceAt = start
+		} else if start != sourceAt {
+			t.Fatalf("the source column starts at %d and %d, want one cell:\n%s", sourceAt, start, view)
 		}
-		if sourceEnd == -1 {
-			sourceEnd = end
-		} else if end != sourceEnd {
-			t.Fatalf("the source column ends at %d and %d, want one column:\n%s", sourceEnd, end, view)
+		if start <= chipAt {
+			t.Fatalf("the source column starts before the chip column:\n%s", view)
 		}
+		if start+lipgloss.Width(name) > width-3 {
+			t.Fatalf("the source column overruns the inner padding: %q", plain)
+		}
+		ends[name] = start + lipgloss.Width(name)
 	}
-	if chipAt < 0 || sourceEnd < 0 {
+	if chipAt < 0 || sourceAt < 0 {
 		t.Fatalf("the LIST view drew no rows:\n%s", view)
 	}
-	if sourceEnd <= chipAt {
-		t.Fatalf("the source column starts before the chip column:\n%s", view)
+	if ends["HS"] >= ends["CUSTOM"] {
+		t.Fatalf("the source values end at %d and %d, want the column left-aligned so the shorter label ends first:\n%s", ends["HS"], ends["CUSTOM"], view)
+	}
+
+	// The SOURCE header names the cell the values start on, so the column reads as
+	// one column instead of a value that drifted under a header.
+	header := ""
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, sourceLabel) && strings.Contains(line, bindingLabel) {
+			header = plainText(line)
+		}
+	}
+	if header == "" {
+		t.Fatalf("the LIST view drew no table header:\n%s", view)
+	}
+	if at := lipgloss.Width(header[:strings.Index(header, sourceLabel)]); at != sourceAt {
+		t.Fatalf("the SOURCE header starts at %d but the values start at %d:\n%s", at, sourceAt, view)
 	}
 
 	// The rule under the header spans the whole table, and so does the selection
