@@ -7,6 +7,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
+
+	"github.com/WilberC/tui-kit/chip"
+	"github.com/WilberC/tui-kit/frame"
+	"github.com/WilberC/tui-kit/text"
+	"github.com/WilberC/tui-kit/theme"
+
+	"github.com/WilberC/herdr-utils/internal/config"
 )
 
 // truecolor forces the renderer to emit colour, so the tests can assert which
@@ -38,6 +45,65 @@ func plainText(text string) string {
 func size(m *Model, width, height int) *Model {
 	m.Update(tea.WindowSizeMsg{Width: width, Height: height})
 	return m
+}
+
+// paintOf is the escape sequence a role opens with, so a test can say which role
+// one string of the screen was drawn with.
+func paintOf(style lipgloss.Style) string {
+	return strings.SplitN(style.Render("x"), "x", 2)[0]
+}
+
+// TestTheTealIsThePalettes pins the only colour the guide takes from the kit's
+// palette instead of keeping a copy of: work in progress — the live view label
+// and the GENTLE group title — is the palette's teal, rendered when the line is
+// drawn, so a screen and the palette cannot drift.
+func TestTheTealIsThePalettes(t *testing.T) {
+	truecolor(t)
+
+	paint := paintOf(theme.TealBold)
+	if paint == "" {
+		t.Fatal("the teal role rendered no colour, so the test cannot judge it")
+	}
+	view := size(New(shotGuide()), 140, 40).View()
+
+	for _, want := range []struct{ name, text string }{
+		{"the live view label", strings.ToUpper(config.ViewKeys)},
+		{"the GENTLE group title", NameGentle},
+	} {
+		if !strings.Contains(view, paint+want.text) {
+			t.Fatalf("%s is not drawn in the palette's teal %s:\n%s", want.name, theme.ColorTeal, view)
+		}
+	}
+}
+
+// TestTheRuleUnderTheHeaderUsesTheGuideRole pins the rule's paint: the joints
+// carry the border role and the body the guide role, so the rule reads as
+// structure between two sections instead of as a second border.
+func TestTheRuleUnderTheHeaderUsesTheGuideRole(t *testing.T) {
+	truecolor(t)
+
+	body := paintOf(theme.Quiet)
+	joint := paintOf(theme.Border)
+	if body == "" || joint == "" || body == joint {
+		t.Fatalf("the two roles rendered one colour, so the test cannot judge the rule: body %q joint %q", body, joint)
+	}
+
+	rule := ""
+	for _, line := range strings.Split(size(New(shotGuide()), 140, 40).View(), "\n") {
+		plain := plainText(line)
+		if strings.HasPrefix(plain, frame.LeftTee) && !strings.Contains(plain, frame.TopTee) && !strings.Contains(plain, frame.BottomTee) {
+			rule = line
+		}
+	}
+	if rule == "" {
+		t.Fatal("the frame drew no plain rule under the header")
+	}
+	if !strings.Contains(rule, body+frame.Horizontal) {
+		t.Fatalf("the rule's body is not drawn in the guide role: %q", rule)
+	}
+	if !strings.Contains(rule, joint+frame.LeftTee) || !strings.Contains(rule, joint+frame.RightTee) {
+		t.Fatalf("the rule's joints are not drawn in the border role: %q", rule)
+	}
 }
 
 // TestTheFrameFitsEveryWindow pins the hard edge: at a wide, a middle and a
@@ -104,9 +170,9 @@ func TestTheFrameIsClosedAndEven(t *testing.T) {
 func TestTheSelectedRowKeepsItsDetail(t *testing.T) {
 	truecolor(t)
 
-	tint := strings.SplitN(styleSelectText.Render("x"), "x", 2)[0]
-	edge := strings.SplitN(styleSelectEdge.Render("x"), "x", 2)[0]
-	slab := strings.SplitN(styleSelectChip.Render("x"), "x", 2)[0]
+	tint := paintOf(theme.TextOnSelection)
+	edge := paintOf(theme.SelectionEdge)
+	slab := paintOf(theme.ChipOnSelection)
 
 	selected := func(view string) string {
 		t.Helper()
@@ -124,7 +190,7 @@ func TestTheSelectedRowKeepsItsDetail(t *testing.T) {
 
 	row := selected(size(New(shotGuide()), 180, 50).View())
 	for _, want := range []struct{ name, text string }{
-		{"the accent edge", edge + edgeMark},
+		{"the accent edge", edge + text.SelectMark},
 		{"the chip slab", slab + " prefix+k"},
 		{"the key text", "prefix+k"},
 		{"the description", "Command bar"},
@@ -138,7 +204,7 @@ func TestTheSelectedRowKeepsItsDetail(t *testing.T) {
 	press(m, tea.KeyMsg{Type: tea.KeyCtrlT})
 	listRow := selected(size(m, 180, 50).View())
 	for _, want := range []struct{ name, text string }{
-		{"the accent edge", edge + edgeMark},
+		{"the accent edge", edge + text.SelectMark},
 		{"the chip slab", slab + " prefix+k"},
 		{"the description", "Command bar"},
 		{"the source", "HS"},
@@ -191,13 +257,13 @@ func TestTheUnboundActionIsDrawnUnset(t *testing.T) {
 	if row == "" {
 		t.Fatalf("the discovered action has no row:\n%s", view)
 	}
-	if !strings.Contains(row, unsetKey) {
+	if !strings.Contains(row, text.Unset) {
 		t.Fatalf("the discovered action's row has no unset dash: %q", row)
 	}
 	if strings.Contains(row, "enter") {
 		t.Fatalf("the discovered action's row shows a key it does not have: %q", row)
 	}
-	chipPaint := strings.SplitN(styleChip.Render("x"), "x", 2)[0]
+	chipPaint := paintOf(theme.ChipAccent)
 	if strings.Contains(row, chipPaint) {
 		t.Fatalf("the unset row still carries a chip slab, so the group reads as empty boxes: %q", row)
 	}
@@ -240,7 +306,7 @@ func TestTheLISTViewIsAnAlignedTable(t *testing.T) {
 
 	chipAt, sourceEnd, width := -1, -1, 0
 	for _, line := range strings.Split(view, "\n") {
-		if strings.Contains(line, separator) {
+		if strings.Contains(line, theme.Dot()) {
 			continue // the footer names the selection too; the table is the body
 		}
 		plain := plainText(line)
@@ -292,14 +358,14 @@ func TestTheLISTViewIsAnAlignedTable(t *testing.T) {
 	for _, line := range strings.Split(view, "\n") {
 		plain := plainText(line)
 		content := strings.TrimSuffix(strings.TrimPrefix(plain, "│ "), " │")
-		if content != "" && strings.Trim(content, borderHorizontal) == "" {
+		if content != "" && strings.Trim(content, frame.Horizontal) == "" {
 			rule = plain
 		}
 	}
 	if rule == "" {
 		t.Fatalf("the LIST view drew no header rule:\n%s", view)
 	}
-	if got := strings.Count(rule, borderHorizontal); got != width-4 {
+	if got := strings.Count(rule, frame.Horizontal); got != width-4 {
 		t.Fatalf("the header rule spans %d of %d cells:\n%q", got, width-4, rule)
 	}
 }
@@ -331,7 +397,7 @@ func TestTheFilterRowSitsAboveTheColumnRules(t *testing.T) {
 		if strings.Contains(line, filterPrompt) && filter < 0 {
 			filter = index
 		}
-		if strings.Contains(line, borderTopTee) && opened < 0 {
+		if strings.Contains(line, frame.TopTee) && opened < 0 {
 			opened = index
 		}
 		if strings.Contains(line, "HS 20") && title < 0 {
@@ -347,10 +413,10 @@ func TestTheFilterRowSitsAboveTheColumnRules(t *testing.T) {
 	if opened != title-2 {
 		t.Fatalf("the gap between the rule and the first group is %d rows, want exactly one blank row", title-opened-1)
 	}
-	if strings.Contains(lines[opened-2], borderTopTee) || strings.Contains(lines[opened-2], borderBottomTee) {
+	if strings.Contains(lines[opened-2], frame.TopTee) || strings.Contains(lines[opened-2], frame.BottomTee) {
 		t.Fatalf("the rule under the header carries a joint: %q", lines[opened-2])
 	}
-	if filterLine := lines[filter]; strings.Count(filterLine, borderVertical) != 2 {
+	if filterLine := lines[filter]; strings.Count(filterLine, frame.Vertical) != 2 {
 		t.Fatalf("a column rule crosses the filter row: %q", filterLine)
 	}
 }
@@ -394,7 +460,7 @@ func TestEveryFrameGlyphUsesTheBorderRole(t *testing.T) {
 	truecolor(t)
 
 	view := size(New(shotGuide()), 140, 40).View()
-	paint := strings.SplitN(styleBorder.Render("x"), "x", 2)[0]
+	paint := paintOf(theme.Border)
 	if paint == "" {
 		t.Fatal("the border role rendered no colour, so the test cannot judge the frame")
 	}
@@ -407,8 +473,8 @@ func TestEveryFrameGlyphUsesTheBorderRole(t *testing.T) {
 			continue
 		}
 		framed++
-		joints += strings.Count(line, borderTopTee) + strings.Count(line, borderBottomTee)
-		for _, glyph := range []string{borderVertical, borderLeftTee, borderRightTee, borderTopTee, borderBottomTee, borderHorizontal, borderTopLeft, borderTopRight, borderBottomLeft, borderBottomRight} {
+		joints += strings.Count(line, frame.TopTee) + strings.Count(line, frame.BottomTee)
+		for _, glyph := range []string{frame.Vertical, frame.LeftTee, frame.RightTee, frame.TopTee, frame.BottomTee, frame.Horizontal, frame.TopLeft, frame.TopRight, frame.BottomLeft, frame.BottomRight} {
 			if strings.Contains(line, "\x1b[0m"+glyph) {
 				t.Fatalf("the glyph %q follows a reset, so it is painted with the terminal's default: %q", glyph, line)
 			}
@@ -431,12 +497,12 @@ func TestChipsKeepTheirTextAndOnePlainSpace(t *testing.T) {
 	view := size(New(shotGuide()), 180, 50).View()
 	// The column chips: the slab covers the key plus one cell of padding on each
 	// side, and the description follows after exactly one plain space.
-	row := styleChip.Render(" prefix+p ") + " " + styleText.Render("Plugin manager")
+	row := theme.ChipAccent.Render(" prefix+p ") + " " + theme.Text.Render("Plugin manager")
 	if !strings.Contains(view, row) {
 		t.Fatalf("the column chip is not a padded slab followed by one plain space:\n%s", view)
 	}
 
-	paint := strings.SplitN(styleHint.Render("x"), "x", 2)[0]
+	paint := paintOf(theme.ChipText)
 	if !strings.Contains(view, paint+" enter ") {
 		t.Fatalf("the enter chip does not cover its key with one cell of padding on each side:\n%s", view)
 	}
@@ -446,8 +512,8 @@ func TestChipsKeepTheirTextAndOnePlainSpace(t *testing.T) {
 			hints = line
 		}
 	}
-	want := styleHint.Render(" enter ") + " " + styleMuted.Render("show command") + chipGutter +
-		styleHint.Render(" ↑↓ ") + " " + styleMuted.Render("move")
+	want := theme.ChipText.Render(" enter ") + " " + theme.Muted.Render("show command") + chip.Gutter +
+		theme.ChipText.Render(" ↑↓ ") + " " + theme.Muted.Render("move")
 	if !strings.Contains(hints, want) {
 		t.Fatalf("the hint bar does not use one plain space and then the two-space gutter: %q", hints)
 	}
@@ -465,7 +531,7 @@ func TestUnsetChipsArePaddedLikeKeys(t *testing.T) {
 	texts := map[string]int{}
 	for _, line := range lines {
 		plain := plainText(line)
-		if !strings.Contains(plain, treeMiddle) && !strings.Contains(plain, treeLast) && !strings.Contains(plain, edgeMark) {
+		if !strings.Contains(plain, treeMiddle) && !strings.Contains(plain, treeLast) && !strings.Contains(plain, text.SelectMark) {
 			continue // the footer names the selection too; the rows are the body
 		}
 		for _, description := range []string{"Dashboard", "Open the bar"} {

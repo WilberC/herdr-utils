@@ -75,9 +75,17 @@ and action output lands in `herdr plugin log herdr-utils`.
 
 ## The screen
 
-The guide fills the pane with one framed popup, and every line of it is a
-role from one palette in `internal/which/theme.go` — the render code never
-names a colour, so the look changes in one file.
+The guide fills the pane with one framed popup. The look it wears is
+[`tui-kit`](https://github.com/WilberC/tui-kit)'s: the palette, the frame and its
+rules, the chips and chips bar, the tree guide and the text fitting all come from
+that module, and its
+[DESIGN.md](https://github.com/WilberC/tui-kit/blob/main/DESIGN.md) is the
+canonical guide this screen follows — the same one herdr-suite renders with.
+`internal/which` keeps only what is specific to this guide: the sources, how the
+groups flow into columns, paging, and the KEYS/LIST assembly. The render code
+names roles, never colours (the one exception is the colour each source's title
+carries, which is the guide's own decision), so a role change moves every
+surface at once.
 
 The bands run in one order: the border with the product name set into it, the
 header, a rule, the filter row with its legend, the rule that opens the columns,
