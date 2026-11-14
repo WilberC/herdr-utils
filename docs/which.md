@@ -118,7 +118,9 @@ the frame fills it.
   on each side, padded to the column's widest key, then one plain space and the
   description, so every description in a column starts on one cell. An entry that
   declares no key of its own gets no slab: a dim dash sits in the cell the key's
-  first letter would use. A group too tall for one column continues in the next
+  first letter would use, and its description keeps the muted tone — lifted onto
+  the hover and the selection tints with the rest of the row — so a bound entry
+  beside it stands out. A group too tall for one column continues in the next
   under `(cont.)`. The selected row keeps every one of those details: a tint
   behind the row instead of a filled bar, an accent `▌` in the row's first cell,
   the chip slab one step brighter, the description in bold and the dim text
@@ -130,8 +132,9 @@ the frame fills it.
   row. The hint bar **pages** instead of hiding a hint: when they all fit it is
   one line, and when they do not it ends with `tab` and the position
   (`more 1/2`); `tab` shows the next page and wraps around, and it never types
-  into the filter. Paging starts again from the first page whenever the footer
-  changes meaning: another view, a live filter, another selected entry.
+  into the filter. The bar itself starts over on the first page when the hints
+  change — another view is not one of those, but an entry whose `enter` action
+  differs is — and keeps its page while they stay the same.
 
 The `LIST` view is the same frame with one aligned table instead: dim
 `BINDING · ENTRY · SOURCE` headers over a full-width rule, a key chip, the entry
@@ -139,7 +142,41 @@ filling every cell that is left and the source flush right against the inner
 padding, so the table spans the frame instead of leaving a stranded column. A filter that matches
 nothing, and the config where every source is off, both answer with one centred
 message instead of empty columns.
-The screen runs in [Bubbletea](https://github.com/charmbracelet/bubbletea);
-`internal/which/shot_test.go` renders it at several sizes — a tall pane, a short
-guide in a popup-sized pane, both views and the paged hint bar — to an ANSI file
-when `HU_WHICH_SHOT_DIR` is set, so the look can be reviewed as an image.
+
+## Mouse and copy
+
+The mouse is a second way to reach the keys, never a second interface: every
+click is a key you can also press.
+
+| Pointer | Does | Same as |
+| --- | --- | --- |
+| click a row, or its chip | selects that entry | moving the cursor onto it |
+| double click the same row or chip, within 400 ms | runs what enter runs — the command of a binding, the action of a discovered one | `enter` |
+| hover | previews the row under the pointer in a fainter tint, with no accent edge; the selection always wins | — |
+| wheel | moves the selection, and pages the body when it crosses a page | `↑` / `↓` |
+| click `KEYS` / `LIST` in the header | switches the view | `ctrl+t` |
+| click the paging chip (`tab  more 1/2`) | shows the next page | `tab` |
+
+Only a row, a chip, the two header view names and the paging chip are click
+targets: no border, rule, title or loose text reacts to a click. A single click
+never runs anything — selecting is reversible — so a slipped press cannot fire an
+action. The map of what is clickable is recorded by the render itself, so the
+cells a click lands on are the cells the screen drew.
+
+`ctrl+y` copies the one value the cursor is on, written as OSC 52 so the
+terminal's clipboard takes it: the command a binding or a manual entry runs, or
+the action id of a live action. The detail line answers `copied …` for a moment.
+Nothing is copied when the entry has no command, so the clipboard is never
+cleared by accident.
+
+Inside herdr a pane that asks for mouse reporting receives clicks, motion and the
+wheel, and an OSC 52 write from the pane is forwarded to herdr's own terminal;
+whether the outer terminal honours the sequence is the terminal's choice. Text
+selection is left to the terminal (shift+drag): the guide does not reimplement
+it.
+The screen runs in [Bubbletea](https://github.com/charmbracelet/bubbletea) with
+all-motion mouse reporting, so hover is possible; `internal/which/shot_test.go`
+renders it at several sizes — a tall pane, a short guide in a popup-sized pane,
+both views, a hovered row, a copy confirmation and the paged hint bar — to an
+ANSI file when `HU_WHICH_SHOT_DIR` is set, so the look can be reviewed as an
+image.

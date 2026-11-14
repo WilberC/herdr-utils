@@ -335,7 +335,9 @@ func TestAnEnabledSourceWithoutEntriesShowsItsProblem(t *testing.T) {
 }
 
 func TestTheFooterNamesTheKeysAndTheEnterAction(t *testing.T) {
-	bound := New(testGuide(group{name: NameHS, entries: hsEntries()}))
+	// A wide pane, so the whole hint set fits on one line: the seven hints the
+	// guide answers to page on anything narrower.
+	bound := size(New(testGuide(group{name: NameHS, entries: hsEntries()})), 180, 50)
 	view := bound.View()
 	for _, want := range []string{"enter  show command", "↑↓", "move", "type", "filter", "ctrl+t", "view", "esc", "close"} {
 		if !strings.Contains(view, want) {
@@ -343,9 +345,9 @@ func TestTheFooterNamesTheKeysAndTheEnterAction(t *testing.T) {
 		}
 	}
 
-	discovered := New(testGuide(group{name: NameDiscovered, entries: []Entry{
+	discovered := size(New(testGuide(group{name: NameDiscovered, entries: []Entry{
 		{Key: "enter", Description: "Open bar", Kind: KindAction, Command: "herdr plugin action invoke herdr-bar.open", ActionID: "herdr-bar.open"},
-	}}))
+	}})), 180, 50)
 	if view := discovered.View(); !strings.Contains(view, "enter  run action") {
 		t.Fatalf("footer does not invite running the action:\n%s", view)
 	}
@@ -410,29 +412,50 @@ func TestTabDoesNotTypeIntoTheFilter(t *testing.T) {
 	}
 }
 
-// TestANewHintSetStartsOnItsFirstPage pins the page against the hint set: a page
-// kept from a set that is gone would show a position the bar no longer has, so
-// switching the view, filtering, or selecting an action returns to page one.
-func TestANewHintSetStartsOnItsFirstPage(t *testing.T) {
-	for name, change := range map[string]func(*Model){
-		"the view switch":   func(m *Model) { press(m, tea.KeyMsg{Type: tea.KeyCtrlT}) },
-		"a live filter":     func(m *Model) { press(m, typeKey("prefix")) },
-		"another selection": func(m *Model) { press(m, tea.KeyMsg{Type: tea.KeyDown}) },
-	} {
-		t.Run(name, func(t *testing.T) {
-			m := size(New(shotGuide()), 80, 24)
-			press(m, tea.KeyMsg{Type: tea.KeyTab})
-			if !strings.Contains(plainText(m.View()), "more 2/2") {
-				t.Fatalf("the guide is not on the second page before the change:\n%s", m.View())
-			}
+// TestTheHintPageFollowsTheHintSet pins the kit's reset rule (tui-kit S10): the
+// bar starts over when the hints themselves change — a page kept from a set that
+// is gone would show a position the bar no longer has — and keeps its page while
+// they stay the same. The guide sets no page by hand.
+func TestTheHintPageFollowsTheHintSet(t *testing.T) {
+	t.Run("an unchanged hint set keeps the page", func(t *testing.T) {
+		m := size(New(shotGuide()), 80, 24)
+		press(m, tea.KeyMsg{Type: tea.KeyTab})
+		if !strings.Contains(plainText(m.View()), "more 2/2") {
+			t.Fatalf("the guide is not on the second page before the change:\n%s", m.View())
+		}
 
-			change(m)
+		// Two bound entries: what enter does is the same on both, so the bar's
+		// hints are the same set and the page it shows stays.
+		press(m, tea.KeyMsg{Type: tea.KeyDown})
 
-			if view := plainText(m.View()); strings.Contains(view, "more 2/") {
-				t.Fatalf("%s kept a page from the previous hint set:\n%s", name, view)
+		if view := plainText(m.View()); !strings.Contains(view, "more 2/2") {
+			t.Fatalf("the bar lost its page although its hints did not change:\n%s", view)
+		}
+	})
+
+	t.Run("a changed hint set starts on page one", func(t *testing.T) {
+		m := size(New(shotGuide()), 80, 24)
+		press(m, tea.KeyMsg{Type: tea.KeyTab})
+		if !strings.Contains(plainText(m.View()), "more 2/2") {
+			t.Fatalf("the guide is not on the second page before the change:\n%s", m.View())
+		}
+
+		// A live action turns enter into "run action", so the set differs.
+		for {
+			entry, ok := m.highlight()
+			if !ok {
+				t.Fatal("the guide has nothing selected")
 			}
-		})
-	}
+			if entry.Invokable() {
+				break
+			}
+			press(m, tea.KeyMsg{Type: tea.KeyDown})
+		}
+
+		if view := plainText(m.View()); !strings.Contains(view, "more 1/") {
+			t.Fatalf("a changed hint set kept the old page:\n%s", view)
+		}
+	})
 }
 
 // TestTabDoesNothingWhenEverythingFits pins the other half of the paging rule: a

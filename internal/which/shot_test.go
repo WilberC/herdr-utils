@@ -74,6 +74,18 @@ func TestShotHarness(t *testing.T) {
 		{name: "nomatch", width: 140, height: 40, setup: func(m *Model) {
 			m.Update(typeKey("no-such-binding"))
 		}},
+		// The pointer over the third entry: the row wears the faint hover tint, the
+		// selection above it keeps its accent edge.
+		{name: "hover", width: 180, height: 50, setup: func(m *Model) {
+			m.hover = 2
+		}},
+		{name: "hover-80", width: 80, height: 24, setup: func(m *Model) {
+			m.hover = 2
+		}},
+		// A copy just confirmed on the detail line.
+		{name: "copied", width: 140, height: 40, setup: func(m *Model) {
+			m.footer = "copied herdr-bar.open"
+		}},
 		{name: "empty", width: 140, height: 40, setup: func(m *Model) {
 			m.guide = Guide{ConfigPath: "/home/u/.config/herdr/plugins/config/herdr-utils/config.json"}
 			m.cursor = 0

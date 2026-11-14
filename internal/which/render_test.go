@@ -25,6 +25,13 @@ func truecolor(t *testing.T) {
 	t.Cleanup(func() { lipgloss.SetColorProfile(before) })
 }
 
+// The tree guides the kit draws on a listed row: every entry but its group's
+// last one is continued, the last one closes.
+const (
+	treeMiddle = "├─"
+	treeLast   = "└─"
+)
+
 // plainText drops the SGR escapes so a test can measure the cells it sees.
 func plainText(text string) string {
 	var out strings.Builder
@@ -265,6 +272,70 @@ func TestTheUnboundActionIsDrawnUnset(t *testing.T) {
 	chipPaint := paintOf(theme.ChipAccent)
 	if strings.Contains(row, chipPaint) {
 		t.Fatalf("the unset row still carries a chip slab, so the group reads as empty boxes: %q", row)
+	}
+}
+
+// TestTheUnboundActionKeepsItsDescriptionMuted pins the role an entry with no key
+// of its own paints its description with: the muted tone, lifted onto the hover
+// and the selection tints. A bound entry beside it keeps the bright text role, so
+// the two kinds of entry stay distinguishable at a glance.
+func TestTheUnboundActionKeepsItsDescriptionMuted(t *testing.T) {
+	truecolor(t)
+
+	guide := func() Guide {
+		return testGuide(
+			group{name: NameHS, entries: []Entry{
+				{Key: "prefix+k", Description: "Command bar", Kind: KindPluginAction, Command: "herdr-bar.open"},
+			}},
+			group{name: NameDiscovered, entries: []Entry{
+				{Key: "enter", Description: "Open the bar", Kind: KindAction, Command: "herdr plugin action invoke herdr-bar.open", ActionID: "herdr-bar.open"},
+			}},
+		)
+	}
+
+	cases := []struct {
+		name  string
+		apply func(*Model)
+		role  lipgloss.Style
+	}{
+		{name: "plain", apply: func(*Model) {}, role: theme.Muted},
+		{name: "hovered", apply: func(m *Model) {
+			m.View()
+			hovered, ok := m.zones.Find(rowZone(1))
+			if !ok {
+				t.Fatal("the render recorded no zone for the unbound entry")
+			}
+			x, y := centre(hovered)
+			hoverAt(m, x, y)
+		}, role: theme.MutedOnHover},
+		{name: "selected", apply: func(m *Model) {
+			press(m, tea.KeyMsg{Type: tea.KeyDown})
+		}, role: theme.MutedOnSelection},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			m := size(New(guide()), 120, 30)
+			test.apply(m)
+			view := m.View()
+
+			row := lineWith(view, "Open the bar")
+			if row == "" {
+				t.Fatalf("the unbound entry has no row:\n%s", view)
+			}
+			if !strings.Contains(row, paintOf(test.role)+"Open the bar") {
+				t.Fatalf("the unbound entry's description is not muted when %s: %q", test.name, row)
+			}
+			// The bound entry beside it keeps the row's primary text, whatever
+			// surface that row is on: it never wears the muted tone.
+			bound := lineWith(view, "Command bar")
+			if bound == "" {
+				t.Fatalf("the bound entry has no row:\n%s", view)
+			}
+			if strings.Contains(bound, paintOf(theme.Muted)+"Command bar") {
+				t.Fatalf("the bound entry's description is muted too, so the two kinds read alike: %q", bound)
+			}
+		})
 	}
 }
 

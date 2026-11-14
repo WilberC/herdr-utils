@@ -9,8 +9,10 @@ import (
 
 	"github.com/WilberC/tui-kit/chip"
 	"github.com/WilberC/tui-kit/frame"
+	"github.com/WilberC/tui-kit/list"
 	"github.com/WilberC/tui-kit/text"
 	"github.com/WilberC/tui-kit/theme"
+	"github.com/WilberC/tui-kit/zone"
 
 	"github.com/WilberC/herdr-utils/internal/config"
 )
@@ -24,17 +26,27 @@ const (
 	// outside one.
 	defaultPaneWidth  = 100
 	defaultPaneHeight = 40
+
+	// entryIndent is how many cells list.Entry spends before the row's content: the
+	// two cells of indent, the two of the tree guide and the one after it. The
+	// guide clips a description against it instead of letting the row cut the text.
+	entryIndent = 5
+
+	// hintRow is the line of the pinned footer the hint bar occupies: the closing
+	// column rule, the detail line, then the bar. A zone lands on the line it was
+	// drawn on.
+	hintRow = 2
+
+	// tableGap is how many cells list.Entry spends before a LIST row's description
+	// column: the tree guide (entryIndent), the chip cell and the space after it,
+	// and the two cells and source column that close the row.
+	tableGap = entryIndent + 6
 )
 
 // The guide's own words: how the frame names itself, what the groups and the
-// views are called, the glyph that opens the filter, and the tree guides it
-// draws in the row's first cells (the kit's list.Row indents instead, which the
-// selection has no room for). Every other glyph, and the whole typography, comes
-// from the kit.
+// views are called, the glyph that opens the filter. Every other glyph, and the
+// whole typography, comes from the kit.
 const (
-	treeMiddle = "├─"
-	treeLast   = "└─"
-
 	filterGlyph  = "❱"
 	continued    = " (cont.)"
 	productName  = "herdr-utils which"
@@ -92,7 +104,9 @@ func (m *Model) pane() (int, int) {
 // one blank row. The frame is the pane clamped to frame.Recommended and centred,
 // so it fills the popup it was opened in instead of hugging its content. It reads
 // state only; every byte it needs was built before the screen opened. The surface
-// itself is the kit's; the guide owns what it puts in it.
+// itself is the kit's; the guide owns what it puts in it, and records where it put
+// every clickable element so a click is answered from cells, never from a second
+// measurement.
 func (m *Model) View() string {
 	paneWidth, paneHeight := m.pane()
 	panel := frame.Frame{
@@ -102,10 +116,16 @@ func (m *Model) View() string {
 	textWidth := panel.ContentWidth()
 	widths := m.layoutWidths(panel.Width - 2)
 	hints := m.hintSet()
+	m.zones = zone.New()
+
+	surface := frame.Surface{Frame: panel, Size: frame.Recommended}
+	if m.mode != config.ViewList {
+		surface.Columns = widths
+	}
 
 	notes := make([]string, 0, len(m.guide.Notes))
 	for _, note := range m.guide.Notes {
-		notes = append(notes, panel.Row(theme.Muted.Render(text.Clip(note, textWidth))))
+		notes = append(notes, theme.Muted.Render(text.Clip(note, textWidth)))
 	}
 
 	// The header names the page, so it is the one top row that depends on the body:
@@ -114,48 +134,51 @@ func (m *Model) View() string {
 	top := []string{
 		"",
 		panel.Rule(),
-		panel.Row(m.filterLine(textWidth)),
+		surface.Row(paneWidth, m.filterLine(textWidth)),
 		frame.ColumnRule(widths, frame.TopTee),
 	}
 	bottom := []string{
 		frame.ColumnRule(widths, frame.BottomTee),
-		panel.Row(m.detailLine(textWidth)),
-		panel.Row(m.hintsLine(textWidth, hints)),
+		surface.Row(paneWidth, m.detailLine(textWidth)),
+		"", // the hint bar, drawn below once the surface knows the row it sits on
 	}
-	bottom = append(bottom, notes...)
+	bottom = append(bottom, surface.Rows(paneWidth, notes...)...)
+	surface.Top, surface.Bottom = top, bottom
 
-	surface := frame.Surface{Frame: panel, Size: frame.Recommended, Top: top, Bottom: bottom}
-	if m.mode != config.ViewList {
-		surface.Columns = widths
-	}
+	// The hint bar records each of its chips and the paging chip, so a click on the
+	// paging chip is the paging key. It is drawn into its own pinned row.
+	canvas := m.canvas(surface, paneHeight)
+	bottom[hintRow] = surface.Row(paneWidth, m.hintsLine(textWidth, surface.BottomY(paneHeight, hintRow), hints))
 
-	body := m.body(panel, widths, surface.BodyRows(paneHeight))
-	top[0] = panel.Row(m.headerLine(textWidth, body))
-	return surface.Popup(paneWidth, paneHeight, body.lines) + "\n"
-}
-
-// sides places right at the frame's right edge, or leaves it out. The guide
-// drops the right side before it cuts the left one — the filter row loses its
-// legend and keeps its prompt (docs/which.md) — so this names which side gives
-// way; the placement is the kit's.
-func sides(left, right string, width int) string {
-	if right != "" && text.Width(left)+text.Width(right)+1 <= width {
-		return text.Join(left, right, width)
-	}
-	return text.Fit(left, width)
+	body := m.body(surface, canvas, paneWidth, widths)
+	top[0] = surface.Row(paneWidth, m.headerLine(textWidth, body))
+	return surface.PopupZones(paneWidth, paneHeight, body.lines, m.zones) + "\n"
 }
 
 // headerLine carries the guide's own name, the sources it read, the current view
-// and how much of it is shown.
+// and how much of it is shown. The two view names are click targets, recorded at
+// the cells they land on: a click on LIST opens the table, one on KEYS goes back.
 func (m *Model) headerLine(textWidth int, body bodyView) string {
 	left := theme.Muted.Render(guideSubname) + theme.Quiet.Render(" │ ") + theme.Muted.Render(m.sourceCount())
-	right := m.viewLabel(config.ViewKeys) + theme.Dot() +
-		m.viewLabel(config.ViewList) + theme.Dot() +
+	keys, table := m.viewLabel(config.ViewKeys), m.viewLabel(config.ViewList)
+	right := keys + theme.Dot() +
+		table + theme.Dot() +
 		theme.Muted.Render(fmt.Sprintf("%d / %d shown", m.shown(), m.total()))
 	if body.pages > 1 {
 		right += theme.Dot() + theme.Muted.Render(fmt.Sprintf("page %d / %d", body.page, body.pages))
 	}
-	return sides(left, right, textWidth)
+	// The right side keeps one cell of air before it, and a side that does not fit
+	// with that cell is dropped whole instead of touching the text it explains.
+	line := text.JoinDropRight(left, " "+right, textWidth)
+
+	// A right side the line could not hold is not drawn, so it records no zone: a
+	// click must never land on a label the user cannot see.
+	if text.Width(left)+1+text.Width(right) <= textWidth {
+		start := textWidth - text.Width(right)
+		m.zones.Add(viewKeysZone, start, 0, text.Width(keys), 1)
+		m.zones.Add(viewListZone, start+text.Width(keys)+text.Width(theme.Dot()), 0, text.Width(table), 1)
+	}
+	return line
 }
 
 func (m *Model) sourceCount() string {
@@ -175,7 +198,8 @@ func (m *Model) viewLabel(view string) string {
 }
 
 // filterLine shows the live query with a block cursor, and the legend that says
-// what the three kinds of key look like.
+// what the three kinds of key look like. The legend gives way before the prompt
+// does when the row is too narrow to hold both.
 func (m *Model) filterLine(textWidth int) string {
 	left := theme.Accent.Render(filterGlyph + " ")
 	if strings.TrimSpace(m.query) == "" {
@@ -183,7 +207,7 @@ func (m *Model) filterLine(textWidth int) string {
 	} else {
 		left += theme.Text.Render(m.query) + theme.Accent.Render(text.Cursor)
 	}
-	return sides(left, legend(), textWidth)
+	return text.JoinDropRight(left, " "+legend(), textWidth)
 }
 
 // legend explains the chips: a prefix binding, a direct one, and an action that
@@ -208,7 +232,11 @@ func (m *Model) detailLine(textWidth int) string {
 
 	row, ok := m.highlightVisible()
 	if !ok {
-		return sides(theme.Muted.Render("nothing selected"+separator+"type to filter"), right, textWidth)
+		empty := theme.Muted.Render("nothing selected" + separator + "type to filter")
+		if right == "" {
+			return empty
+		}
+		return text.JoinDropRight(empty, " "+right, textWidth)
 	}
 	entry := row.entry
 	key := entry.Key
@@ -257,10 +285,7 @@ func (m *Model) detailLine(textWidth int) string {
 	if right == "" {
 		return line.String()
 	}
-	if text.Width(line.String())+text.Width(right)+1 <= textWidth {
-		return text.Join(line.String(), right, textWidth)
-	}
-	return line.String()
+	return text.JoinDropRight(line.String(), " "+right, textWidth)
 }
 
 // hintSet is the hints the guide answers to, in declaration order — the order is
@@ -275,6 +300,7 @@ func (m *Model) hintSet() []chip.Hint {
 		{Key: "enter", Label: enter},
 		{Key: "↑↓", Label: "move"},
 		{Key: "type", Label: "filter"},
+		{Key: "ctrl+y", Label: "copy"},
 		{Key: "ctrl+t", Label: "view"},
 		{Key: "esc", Label: "close"},
 		{Key: "ctrl+u", Label: "clear"},
@@ -283,9 +309,10 @@ func (m *Model) hintSet() []chip.Hint {
 
 // hintsLine is the page of the hint bar the guide shows: every hint that fits,
 // and the paging chip naming chip.PageKey when some do not. A hint is never
-// dropped without it.
-func (m *Model) hintsLine(textWidth int, hints []chip.Hint) string {
-	return m.bar.Render(textWidth, hints...)
+// dropped without it, and every chip is recorded at the row it was drawn on, so
+// the paging chip is clickable.
+func (m *Model) hintsLine(textWidth, y int, hints []chip.Hint) string {
+	return m.bar.RenderZones(m.zones, 0, y, textWidth, hints...)
 }
 
 // hintWidth is the room the hint bar is drawn in: the frame's content width at
@@ -318,10 +345,42 @@ type bodyView struct {
 	pages int
 }
 
+// bodyCanvas is where the body's rows land: the zone map they record in, the
+// frame-content x of each column, the frame-content row of the body's first line
+// and how many lines the body has room for. A row registers the cells it was drawn
+// on, so a line the surface never gave the body is never a click target.
+type bodyCanvas struct {
+	zones *zone.Map
+	colX  []int
+	top   int
+	rows  int
+}
+
+// canvas measures the body against the surface: the same offsets the kit's
+// RenderZones translates, so a click lands on the row the user sees.
+func (m *Model) canvas(surface frame.Surface, paneHeight int) bodyCanvas {
+	colX := surface.ColumnX()
+	if len(colX) == 0 {
+		colX = []int{0}
+	}
+	return bodyCanvas{zones: m.zones, colX: colX, top: surface.BodyY(0), rows: surface.BodyRows(paneHeight)}
+}
+
+// at is the frame-content cell of one body line in one column, and whether the
+// body had room for that line at all.
+func (c bodyCanvas) at(column, line int) (int, int, bool) {
+	if line < 0 || line >= c.rows || column < 0 || column >= len(c.colX) {
+		return 0, 0, false
+	}
+	return c.colX[column], c.top + line, true
+}
+
 // body draws the columns, the table, the empty state or the zero-match state.
-func (m *Model) body(panel frame.Frame, widths []int, height int) bodyView {
+func (m *Model) body(surface frame.Surface, canvas bodyCanvas, paneWidth int, widths []int) bodyView {
+	panel := surface.At(paneWidth)
+	height := canvas.rows
 	if m.mode == config.ViewList {
-		return m.listBody(panel, widths[0], height)
+		return m.listBody(panel, widths[0], height, canvas)
 	}
 	blocks := make([][]string, len(widths))
 	switch {
@@ -330,7 +389,7 @@ func (m *Model) body(panel frame.Frame, widths []int, height int) bodyView {
 	case m.filteredToNothing():
 		blocks[0] = centered(m.noMatchLines(widths[0]), widths[0], height)
 	default:
-		return m.columns(panel, widths, height)
+		return m.columns(panel, widths, height, canvas)
 	}
 	lines := 0
 	for _, block := range blocks {
@@ -344,7 +403,7 @@ func (m *Model) body(panel frame.Frame, widths []int, height int) bodyView {
 // earned instead of stacking in the first one. A group that does not fit in the
 // space left moves to the next column whole; only a group taller than a column
 // is continued there under its own "(cont.)" header.
-func (m *Model) columns(panel frame.Frame, widths []int, height int) bodyView {
+func (m *Model) columns(panel frame.Frame, widths []int, height int, canvas bodyCanvas) bodyView {
 	wrap := widths[0]
 	for _, width := range widths {
 		wrap = min(wrap, width)
@@ -384,7 +443,7 @@ func (m *Model) columns(panel frame.Frame, widths []int, height int) bodyView {
 
 	blocks := make([][]string, columns)
 	for index, column := range flowed {
-		blocks[index] = m.columnLines(column, widths[index], len(column))
+		blocks[index] = m.columnLines(column, widths[index], len(column), index, canvas)
 	}
 	return bodyView{lines: frame.Grid(panel, blocks, widths, lines), page: page, pages: pages}
 }
@@ -448,7 +507,7 @@ func trimSpacer(rows []bodyRow) []bodyRow {
 
 // columnLines renders one column: the chips share one width so the descriptions
 // start on the same cell in every row, and the block is padded to the frame.
-func (m *Model) columnLines(rows []bodyRow, width, height int) []string {
+func (m *Model) columnLines(rows []bodyRow, width, height, column int, canvas bodyCanvas) []string {
 	labels := make([]string, 0, len(rows))
 	for _, row := range rows {
 		if row.kind == rowEntry {
@@ -459,8 +518,8 @@ func (m *Model) columnLines(rows []bodyRow, width, height int) []string {
 	chipWidth = max(chipWidth, min(text.Width(text.Unset), width-4-minDescWidth))
 
 	lines := make([]string, 0, len(rows))
-	for _, row := range rows {
-		lines = append(lines, m.rowLine(row, width, chipWidth))
+	for line, row := range rows {
+		lines = append(lines, m.rowLine(row, width, chipWidth, column, line, canvas))
 	}
 	for height > 0 && len(lines) < height {
 		lines = append(lines, strings.Repeat(" ", width))
@@ -471,8 +530,10 @@ func (m *Model) columnLines(rows []bodyRow, width, height int) []string {
 	return lines
 }
 
-// rowLine draws one body row at a fixed width.
-func (m *Model) rowLine(row bodyRow, width, chipWidth int) string {
+// rowLine draws one body row at a fixed width. An entry is a list.Entry: the kit
+// draws the tree guide, the chip and the tint, and records the row and its slab as
+// click targets, so the guide never measures a row it drew.
+func (m *Model) rowLine(row bodyRow, width, chipWidth, column, line int, canvas bodyCanvas) string {
 	switch row.kind {
 	case rowGroup:
 		source := m.guide.Sources[row.source]
@@ -490,43 +551,88 @@ func (m *Model) rowLine(row bodyRow, width, chipWidth int) string {
 	}
 
 	entry := row.entry
-	label := m.keyLabel(entry)
-	description := text.Clip(entry.Description, width-chipWidth-6)
-	tree := theme.Quiet.Render(treeMiddle)
-	if row.last {
-		tree = theme.Quiet.Render(treeLast)
-	}
-
-	if row.index == m.cursor {
-		return m.selectedRow(label, entry.Unset(), description, width, chipWidth)
-	}
-
-	if entry.Unset() {
-		return text.Fit(tree+" "+chip.UnsetCell(theme.Muted, label, chipWidth)+theme.Muted.Render(description), width)
-	}
-	return text.Fit(tree+" "+chip.Cell(theme.ChipAccent, label, chipWidth)+theme.Text.Render(description), width)
+	roles := m.rolesAt(row.index)
+	description := m.descriptionRole(entry, roles)
+	return m.drawEntry(entryRow{
+		entry:       entry,
+		roles:       roles,
+		index:       row.index,
+		last:        row.last,
+		cell:        m.cell(entry, roles, chipWidth),
+		description: description.Render(text.Clip(entry.Description, width-chipWidth-entryIndent-3)),
+		width:       width,
+		column:      column,
+		line:        line,
+	}, canvas)
 }
 
-// selectedRow draws the selected entry on the selection tint: the accent edge in
-// the tree's first cell, the chip slab one step brighter, the description in bold
-// text and any secondary text lifted, so the row keeps every detail it shows when
-// it is not selected. The tint runs to the column's last cell.
-func (m *Model) selectedRow(label string, unset bool, description string, width, chipWidth int) string {
-	var line strings.Builder
-	line.WriteString(theme.SelectionEdge.Render(text.SelectMark))
-	line.WriteString(theme.MutedOnSelection.Render(frame.Horizontal))
-	line.WriteString(theme.TextOnSelection.Render(" "))
-	if unset {
-		line.WriteString(theme.MutedOnSelection.Render(text.Fit(" "+label, chipWidth+3)))
-		line.WriteString(theme.MutedOnSelection.Render(description))
-	} else {
-		line.WriteString(theme.ChipOnSelection.Render(" " + text.Fit(label, chipWidth) + " "))
-		line.WriteString(theme.TextOnSelection.Render(" " + description))
+// rolesAt is how one entry paints: the selection, the pointer's faint tint, or
+// the panel. The selection wins where the pointer and the cursor meet, and a
+// key's chip keeps the guide's own accent colour on whichever surface it sits.
+func (m *Model) rolesAt(index int) list.Roles {
+	roles := list.RowRolesFor(list.State{Selected: index == m.cursor, Hovered: index >= 0 && index == m.hover})
+	if !roles.Selected {
+		roles.Chip = theme.ChipAccent
 	}
-	if fill := width - chipWidth - text.Width(description) - 6; fill > 0 {
-		line.WriteString(theme.TextOnSelection.Render(strings.Repeat(" ", fill)))
+	return roles
+}
+
+// descriptionRole is how an entry's description paints: the row's primary text,
+// or the row's muted tone for an entry that declares no key of its own, so a bound
+// entry beside it stands out. Both follow the surface the row sits on, so the muted
+// description is lifted on the hover and on the selection.
+func (m *Model) descriptionRole(entry Entry, roles list.Roles) lipgloss.Style {
+	if entry.Unset() {
+		return roles.Muted
 	}
-	return line.String()
+	return roles.Name
+}
+
+// cell is an entry's key column: a chip slab, or the dim dash of an entry that
+// declares no key of its own.
+func (m *Model) cell(entry Entry, roles list.Roles, chipWidth int) string {
+	label := m.keyLabel(entry)
+	if entry.Unset() {
+		return chip.UnsetCell(roles.Muted, label, chipWidth)
+	}
+	return chip.Cell(roles.Chip, label, chipWidth)
+}
+
+// entryRow is one entry as the body draws it: where it stands, the roles it
+// paints with, its two columns and the cells it goes on.
+type entryRow struct {
+	entry       Entry
+	roles       list.Roles
+	index       int
+	last        bool
+	cell        string
+	description string
+	width       int
+	column      int
+	line        int
+}
+
+// drawEntry draws one entry through the kit and records the row and its chip slab
+// at the cells they were drawn on, so a click on either selects the entry. An
+// entry with no key of its own records its row only: there is no slab to hit.
+func (m *Model) drawEntry(row entryRow, canvas bodyCanvas) string {
+	x, y, drawn := canvas.at(row.column, row.line)
+	painted := list.Entry{
+		Roles:       row.roles,
+		Last:        row.last,
+		Cell:        row.cell,
+		Description: row.description,
+		Width:       row.width,
+		X:           x,
+		Y:           y,
+	}
+	if drawn {
+		painted.ID, painted.Zones = rowZone(row.index), canvas.zones
+		if !row.entry.Unset() {
+			painted.ChipID = chipZone(row.index)
+		}
+	}
+	return painted.Render()
 }
 
 // rows flattens the enabled sources into the body flow: one blank row under the
@@ -571,16 +677,23 @@ func (m *Model) rows(wrap int) []bodyRow {
 
 // listBody is the LIST view: one aligned table — chip, entry, source — with the
 // same highlight and the same paging as the columns.
-func (m *Model) listBody(panel frame.Frame, width, height int) bodyView {
+func (m *Model) listBody(panel frame.Frame, width, height int, canvas bodyCanvas) bodyView {
 	type listRow struct {
 		entry  Entry
 		source string
 		index  int
+		last   bool
 	}
 	rows := make([]listRow, 0, m.shown())
 	for source := range m.guide.Sources {
-		for _, entry := range m.visibleEntries(source) {
-			rows = append(rows, listRow{entry: entry, source: m.guide.Sources[source].Name(), index: len(rows)})
+		entries := m.visibleEntries(source)
+		for position, entry := range entries {
+			rows = append(rows, listRow{
+				entry:  entry,
+				source: m.guide.Sources[source].Name(),
+				index:  len(rows),
+				last:   position == len(entries)-1,
+			})
 		}
 	}
 
@@ -594,14 +707,14 @@ func (m *Model) listBody(panel frame.Frame, width, height int) bodyView {
 		labels = append(labels, m.keyLabel(row.entry))
 	}
 	chipWidth := min(chip.Width(append(labels, text.Unset)...), maxChipWidth)
-	chipWidth = max(chipWidth, min(text.Width(text.Unset), width-sourceWidth-6-minDescWidth))
+	chipWidth = max(chipWidth, min(text.Width(text.Unset), width-sourceWidth-tableGap-minDescWidth))
 
 	// The table spans the whole inner width: the chip keeps its column, the entry
 	// takes every cell that is left and the source ends on the inner padding edge.
-	entryWidth := width - chipWidth - sourceWidth - 6
+	entryWidth := width - chipWidth - sourceWidth - tableGap
 	if entryWidth < minDescWidth {
-		chipWidth = max(text.Width(text.Unset), width-sourceWidth-6-minDescWidth)
-		entryWidth = max(minDescWidth, width-chipWidth-sourceWidth-6)
+		chipWidth = max(text.Width(text.Unset), width-sourceWidth-tableGap-minDescWidth)
+		entryWidth = max(minDescWidth, width-chipWidth-sourceWidth-tableGap)
 	}
 
 	lines := make([]string, 0, len(rows)+2)
@@ -621,7 +734,7 @@ func (m *Model) listBody(panel frame.Frame, width, height int) bodyView {
 			break
 		}
 		lines = append(lines, m.listRowLine(rows[position].entry, rows[position].source, rows[position].index,
-			width, chipWidth, entryWidth, sourceWidth))
+			rows[position].last, len(lines), width, chipWidth, entryWidth, sourceWidth, canvas))
 	}
 	return bodyView{lines: frame.Grid(panel, [][]string{lines}, []int{width}, len(lines)), page: page, pages: pages}
 }
@@ -629,41 +742,30 @@ func (m *Model) listBody(panel frame.Frame, width, height int) bodyView {
 // listHeader names the table's columns in dim capitals, aligned to the cells
 // their values start on.
 func (m *Model) listHeader(chipWidth, entryWidth, sourceWidth int) string {
-	line := "  " + theme.Muted.Render(text.Fit(bindingLabel, chipWidth+1)) +
+	return strings.Repeat(" ", entryIndent+1) + theme.Muted.Render(text.Fit(bindingLabel, chipWidth+2)) +
 		" " + theme.Muted.Render(text.Fit(entryLabel, entryWidth)) +
 		"  " + theme.Muted.Render(text.PadLeft(sourceLabel, sourceWidth))
-	return line
 }
 
 // listRowLine draws one table row: the chip, the description and the source flush
-// right, so the row fills the table's whole width.
-func (m *Model) listRowLine(entry Entry, source string, index, width, chipWidth, entryWidth, sourceWidth int) string {
-	label := m.keyLabel(entry)
-	description := text.Clip(entry.Description, entryWidth)
-	name := text.PadLeft(source, sourceWidth)
-
-	if index == m.cursor {
-		var line strings.Builder
-		line.WriteString(theme.SelectionEdge.Render(text.SelectMark))
-		if entry.Unset() {
-			line.WriteString(theme.MutedOnSelection.Render(text.Fit(" "+label, chipWidth+3)))
-			line.WriteString(theme.MutedOnSelection.Render(text.Fit(description, entryWidth) + "  " + name))
-		} else {
-			line.WriteString(theme.ChipOnSelection.Render(" " + text.Fit(label, chipWidth) + " "))
-			line.WriteString(theme.TextOnSelection.Render(" " + text.Fit(description, entryWidth) + "  "))
-			line.WriteString(theme.MutedOnSelection.Render(name))
-		}
-		return text.Fit(line.String(), width)
-	}
-
-	cell := chip.Cell(theme.ChipAccent, label, chipWidth)
-	descriptionStyle := theme.Text
-	if entry.Unset() {
-		cell = chip.UnsetCell(theme.Muted, label, chipWidth)
-		descriptionStyle = theme.Muted
-	}
-	return text.Fit(" "+cell+
-		descriptionStyle.Render(text.Fit(description, entryWidth))+"  "+theme.Muted.Render(name), width)
+// right, so the row fills the table's whole width. The source rides the
+// description column, so list.Entry records the row as one click target.
+func (m *Model) listRowLine(entry Entry, source string, index int, last bool, line, width, chipWidth, entryWidth, sourceWidth int, canvas bodyCanvas) string {
+	roles := m.rolesAt(index)
+	description := m.descriptionRole(entry, roles)
+	return m.drawEntry(entryRow{
+		entry: entry,
+		roles: roles,
+		index: index,
+		last:  last,
+		cell:  m.cell(entry, roles, chipWidth),
+		description: roles.Space.Render(" ") +
+			description.Render(text.Fit(text.Clip(entry.Description, entryWidth), entryWidth)) +
+			roles.Space.Render("  ") + roles.Muted.Render(text.PadLeft(source, sourceWidth)),
+		width:  width,
+		column: 0,
+		line:   line,
+	}, canvas)
 }
 
 // keyLabel is what the chip shows: the binding, or a dash for an entry that
