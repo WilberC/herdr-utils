@@ -103,6 +103,27 @@ smoke-tested by the release workflow itself.
 | [Health](docs/health.md) | `hu version`, the startup gate, the config file and the exit codes |
 | [Development](docs/development.md) | offline tests, `make` targets, the workflows, the release flow and the repository layout |
 
+## Theme
+
+The keybinding guide renders with a theme from [tui-kit](https://github.com/WilberC/tui-kit),
+resolved in this order:
+
+1. **`HU_THEME`** — names a JSON file in the themes directory (`$HU_THEME=gruvbox`
+   loads `gruvbox.json`), under `~/.config/hu/themes` (or your platform's config
+   dir). The file is a partial override over the built-in Tokyo Night palette:
+
+   ```json
+   { "name": "gruvbox", "colors": { "text": "#ebdbb2", "accent": 196, "chip": "" } }
+   ```
+
+2. **No setting** — the terminal is asked for its own colours (foreground,
+   background, the sixteen ANSI slots) and the theme is generated from the
+   answer, so the guide follows whatever theme your terminal wears.
+
+Every failure — a missing or broken file, a terminal that cannot be asked —
+falls back to the built-in Tokyo Night palette. A role set to `""` uses the
+terminal's own default.
+
 ## Status
 
 This release line ships the container, its config toggles, the startup gate, the
