@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/WilberC/herdr-utils/internal/config"
 	"github.com/WilberC/herdr-utils/internal/which"
+	"github.com/WilberC/tui-kit/theme"
 )
 
 // guideFunc is the terminal seam: production runs the Bubbletea program, a test
@@ -15,6 +17,7 @@ import (
 type guideFunc func(*which.Guide, io.Reader, io.Writer) error
 
 func runWhich(d deps, args []string) int {
+	_ = theme.Use(theme.Auto(d.getenv("HU_THEME"), huThemeDir()))
 	if len(args) != 0 {
 		return report(usageError{reason: "which takes no arguments", usage: whichUsage}, d.err)
 	}
@@ -85,4 +88,18 @@ func isTerminal(reader io.Reader) bool {
 		return false
 	}
 	return info.Mode()&os.ModeCharDevice != 0
+}
+
+// huThemeDir is where a custom theme's JSON file lives: the platform's config
+// directory, under hu/themes. The HU_THEME setting names a file in it —
+// "gruvbox" loads gruvbox.json — and every failure to load one, like a
+// missing file or a broken one, leaves the built-in Tokyo Night palette in
+// force. With no setting the guide asks the terminal for its own colours and
+// renders the theme the terminal describes.
+var huThemeDir = func() string {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(base, "hu", "themes")
 }
