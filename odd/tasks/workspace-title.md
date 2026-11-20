@@ -84,3 +84,8 @@ source, display-only: the workspace label is the user's.
   for the caller to retry with the same text. A `watch` daemon cannot see
   agent requests on its own (no session read surface), so the capture stays
   with whoever has the request — same division as L4.
+- **L6** (T2 evidence): herdr-sidecar worktree a39386f — Facts.Title from a
+  slow side clock (one workspace get per minute, failures keep the last read),
+  workspace id from the pane id prefix, header renders the title muted,
+  centered, clipped; absent title renders nothing and the artboard pins hold
+  byte-identical. Suite: 13 packages ok, vet clean.
