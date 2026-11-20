@@ -98,3 +98,7 @@ source, display-only: the workspace label is the user's.
   to herdr or pi: public extension API + existing CLI. Toggle HERDR_TITLE_DISABLE=1,
   debug HERDR_TITLE_DEBUG=1. Pure functions smoke-tested with node strip-types;
   installed to ~/.gentle-shell/agent/extensions (install.sh now copies it).
+- **L7** (design): design/workspace-title/ in herdr-sidecar — 01-extension-pi.html
+  (the shared end state: title under the agent name, rail reading the token) and
+  02-package-pi.html (the pi-package variant: same render plus the
+  /workspace-title status sheet and persistent toggle).
