@@ -89,3 +89,12 @@ source, display-only: the workspace label is the user's.
   workspace id from the pane id prefix, header renders the title muted,
   centered, clipped; absent title renders nothing and the artboard pins hold
   byte-identical. Suite: 13 packages ok, vet clean.
+- **T3** (S4/S6 auto-insert): Pi extension `extensions/herdr-workspace-title.ts`
+  in herdr-sidecar — hooks `before_agent_start`, redacts the title with the
+  session's active model (15s isolated call), falls back to the local
+  heuristic, applies via report-metadata (display-only, source herdr-utils).
+  Adapted from the gs3-sidebar reference (same hooks and fail-closed rules);
+  the deliberate change: report-metadata instead of workspace rename. No PRs
+  to herdr or pi: public extension API + existing CLI. Toggle HERDR_TITLE_DISABLE=1,
+  debug HERDR_TITLE_DEBUG=1. Pure functions smoke-tested with node strip-types;
+  installed to ~/.gentle-shell/agent/extensions (install.sh now copies it).
