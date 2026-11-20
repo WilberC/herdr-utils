@@ -102,3 +102,12 @@ source, display-only: the workspace label is the user's.
   (the shared end state: title under the agent name, rail reading the token) and
   02-package-pi.html (the pi-package variant: same render plus the
   /workspace-title status sheet and persistent toggle).
+- **L8** (T4, decision): the Pi extension lives in its own repo
+  pi-herdr-workspace-title (user: "una repo propia"), not inside sidecar and
+  not merged into pi-message-frames (whose contract forbids model hooks).
+  Package: extension + /workspace-title on|off|status persisted toggle,
+  HERDR_TITLE_DISABLE=1 hard switch, README, dual-copyright MIT, node --test
+  suite (9 pure-function tests, green). Sidecar worktree no longer ships the
+  extension; its README links the package. Installed to
+  ~/.gentle-shell/agent/extensions from the package repo. Push and
+  gh repo create remain the user's decision.
