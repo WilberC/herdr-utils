@@ -21,6 +21,7 @@ Commands:
   which     Open the keybinding guide for herdr
   keys      Keep the herdr-utils.which action bound in your herdr config
   plugins   Keep the recommended herdr plugins installed
+  title     Title a workspace from the agent's first request
   startup   Apply the config gate; herdr runs this at server start
   version   Print the version this binary was built as
 
@@ -71,6 +72,7 @@ var commands = []command{
 	{name: "which", summary: "Open the keybinding guide for herdr", usage: whichUsage},
 	{name: "keys", summary: "Keep the guide action bound in your herdr config", usage: keysUsage},
 	{name: "plugins", summary: "Keep the recommended herdr plugins installed", usage: pluginsUsage},
+	{name: "title", summary: "Title a workspace from the agent's first request", usage: titleUsage},
 	{name: "startup", summary: "Apply the config gate at server start", usage: startupUsage},
 	{name: "version", summary: "Print the build version", usage: versionUsage},
 }
@@ -143,6 +145,8 @@ func runWith(d deps, args []string, stdout, stderr io.Writer) int {
 		return runKeys(d, args[1:])
 	case "plugins":
 		return runPlugins(d, args[1:])
+	case "title":
+		return runTitle(d, args[1:])
 	case "startup":
 		return runStartup(d, args[1:])
 	case "version":
@@ -150,6 +154,19 @@ func runWith(d deps, args []string, stdout, stderr io.Writer) int {
 	}
 
 	return unknownCommand(cmd.name, stderr)
+}
+
+// runTitle dispatches the title subcommands; only set exists today.
+func runTitle(d deps, args []string) int {
+	if len(args) == 0 {
+		fmt.Fprint(d.err, titleUsage)
+		return 2
+	}
+	if args[0] != "set" {
+		fmt.Fprintf(d.err, "unknown title command %q\n\n%s", args[0], titleUsage)
+		return 2
+	}
+	return runTitleSet(d, args[1:])
 }
 
 func runStartup(d deps, args []string) int {

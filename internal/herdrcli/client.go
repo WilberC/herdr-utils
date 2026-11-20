@@ -165,6 +165,7 @@ func (c *Client) Session(ctx context.Context) (herdrmock.Session, error) {
 					TabID       string `json:"tab_id"`
 					WorkspaceID string `json:"workspace_id"`
 					Focused     bool   `json:"focused"`
+					Cwd         string `json:"cwd"`
 				} `json:"agents"`
 			} `json:"snapshot"`
 		} `json:"result"`
@@ -207,6 +208,7 @@ func (c *Client) Session(ctx context.Context) (herdrmock.Session, error) {
 			TabID:       agent.TabID,
 			WorkspaceID: agent.WorkspaceID,
 			Focused:     agent.Focused,
+			Cwd:         agent.Cwd,
 		})
 	}
 	return session, nil
@@ -229,6 +231,41 @@ func (c *Client) FocusAgent(ctx context.Context, target string) error {
 	_, err := c.run(ctx, "agent", "focus", target)
 	return err
 }
+
+// WorkspaceTitle reads the workspace's display-only title token: what
+// "herdr workspace get <id>" reports under tokens.title. Its default output is
+// JSON, so the read parses that document directly.
+func (c *Client) WorkspaceTitle(ctx context.Context, workspaceID string) (string, error) {
+	out, err := c.run(ctx, "workspace", "get", workspaceID)
+	if err != nil {
+		return "", err
+	}
+	var document struct {
+		Result struct {
+			Workspace struct {
+				Tokens struct {
+					Title string `json:"title"`
+				} `json:"tokens"`
+			} `json:"workspace"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out, &document); err != nil {
+		return "", fmt.Errorf("parse herdr workspace get %s: %w", workspaceID, err)
+	}
+	return document.Result.Workspace.Tokens.Title, nil
+}
+
+// SetWorkspaceTitle reports the display-only title token for a workspace. The
+// token shows up as tokens.title and never touches the workspace label.
+func (c *Client) SetWorkspaceTitle(ctx context.Context, workspaceID, title string) error {
+	_, err := c.run(ctx, "workspace", "report-metadata", workspaceID,
+		"--source", titleSourceID, "--token", "title="+title)
+	return err
+}
+
+// titleSourceID is the report-metadata source the workspace title is written
+// under; it mirrors internal/title.SourceID without importing it.
+const titleSourceID = "herdr-utils"
 
 func (c *Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	bin, err := binary(c.Bin)

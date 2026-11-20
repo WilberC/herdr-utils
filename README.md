@@ -22,9 +22,13 @@ on, so installing the container changes nothing.
   plugins, rendered in this README and installable on a new machine with one
   command. The catalog is the repository's `plugins.toml`, never a hand-edited
   section.
-- **Containers that decide for you** — nothing is on by default. `tools.which`
-  and `tools.plugins` each have their own switch, and so does every source the
-  guide renders, so the tool is only ever what you asked for.
+- **Containers that decide for you** — nothing is on by default. `tools.which`,
+  `tools.plugins` and `tools.title` each have their own switch, and so does every
+  source the guide renders, so the tool is only ever what you asked for.
+- **Workspaces that name themselves** — `hu title` gives the focused workspace a
+  short display-only title from the agent's first real request ("Fix login
+  redirect loop"): once per workspace, your own rename always wins, reported as
+  display-only metadata so nothing you named is overwritten. See `docs/title.md`.
 
 ## Quick start
 

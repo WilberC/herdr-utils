@@ -41,6 +41,9 @@ type Agent struct {
 	TabID       string
 	WorkspaceID string
 	Focused     bool
+	// Cwd is the directory the agent session runs in, as the snapshot reports
+	// it; empty when herdr has none.
+	Cwd string
 }
 
 // Session is the live topology the session read returns: where the focus is, and
@@ -87,6 +90,16 @@ type FocusClient interface {
 	FocusAgent(ctx context.Context, target string) error
 }
 
+// TitleClient is the part of Client that reads and writes the display-only
+// workspace title: the metadata token the workspace-title feature reports.
+type TitleClient interface {
+	// WorkspaceTitle reads a workspace's current title token ("" = none).
+	WorkspaceTitle(ctx context.Context, workspaceID string) (string, error)
+	// SetWorkspaceTitle reports the display-only title token for a workspace;
+	// the workspace label stays untouched.
+	SetWorkspaceTitle(ctx context.Context, workspaceID, title string) error
+}
+
 // PluginClient is the part of Client that inventories and installs plugins.
 // InstallPlugin takes the pinned ref the catalog declares, empty when the entry
 // is not pinned.
@@ -101,4 +114,5 @@ type Client interface {
 	SessionClient
 	FocusClient
 	PluginClient
+	TitleClient
 }

@@ -16,7 +16,7 @@ func envFrom(values map[string]string) func(string) string {
 // and no which source on either, so installing it changes nothing until the
 // user opts in.
 func TestDefaultsAreEveryToolAndSourceOff(t *testing.T) {
-	if got, want := strings.Join(Tools(), ","), "which,plugins"; got != want {
+	if got, want := strings.Join(Tools(), ","), "which,plugins,title"; got != want {
 		t.Fatalf("Tools() = %q, want %q", got, want)
 	}
 	if got, want := strings.Join(Sources(), ","), "hs,gentle,custom,discovered"; got != want {

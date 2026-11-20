@@ -24,6 +24,12 @@ type Fake struct {
 	InstalledErr      error
 	InstallErrs       map[string]error
 
+	// Titles scripts the workspaces' display-only title tokens; a successful
+	// SetWorkspaceTitle stores into the map, so a second set on the same
+	// workspace reads the first one back.
+	Titles      map[string]string
+	SetTitleErr error
+
 	mu    sync.Mutex
 	calls []Call
 }
@@ -88,6 +94,26 @@ func (f *Fake) FocusTab(ctx context.Context, tabID string) error {
 func (f *Fake) FocusAgent(ctx context.Context, target string) error {
 	f.record("FocusAgent", target)
 	return f.FocusAgentErr
+}
+
+// WorkspaceTitle reads the scripted display-only title token.
+func (f *Fake) WorkspaceTitle(ctx context.Context, workspaceID string) (string, error) {
+	f.record("WorkspaceTitle", workspaceID)
+	return f.Titles[workspaceID], nil
+}
+
+// SetWorkspaceTitle records the title and stores it as the workspace's current
+// one.
+func (f *Fake) SetWorkspaceTitle(ctx context.Context, workspaceID, title string) error {
+	f.record("SetWorkspaceTitle", workspaceID+" "+title)
+	if f.SetTitleErr != nil {
+		return f.SetTitleErr
+	}
+	if f.Titles == nil {
+		f.Titles = map[string]string{}
+	}
+	f.Titles[workspaceID] = title
+	return nil
 }
 
 // Plugins returns the scripted inventory.

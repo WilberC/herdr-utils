@@ -20,6 +20,7 @@ import (
 const (
 	ToolWhich   = "which"
 	ToolPlugins = "plugins"
+	ToolTitle   = "title"
 )
 
 // The sources the which guide can render, in catalog order. A source's name is
@@ -32,7 +33,7 @@ const (
 )
 
 var (
-	toolNames   = []string{ToolWhich, ToolPlugins}
+	toolNames   = []string{ToolWhich, ToolPlugins, ToolTitle}
 	sourceNames = []string{SourceHS, SourceGentle, SourceCustom, SourceDiscovered}
 )
 
